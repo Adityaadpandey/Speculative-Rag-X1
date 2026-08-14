@@ -13,3 +13,10 @@ def test_tokenize_handles_non_ascii_scripts():
     # \w with re.UNICODE keeps Devanagari word characters as tokens.
     tokens = tokenize("दिल्ली भारत")
     assert tokens == {"दिल्ली", "भारत"}
+
+
+def test_tokenize_handles_tamil_combining_marks():
+    # Tamil vowel signs/virama are combining marks (category Mn/Mc) that
+    # must stay attached to their base letter, not become separate tokens.
+    tokens = tokenize("தமிழ் மொழி")
+    assert tokens == {"தமிழ்", "மொழி"}
