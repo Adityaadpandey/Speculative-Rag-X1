@@ -29,7 +29,19 @@ class Settings(BaseModel):
     default_strategy: str = "native"
     answer_top_k: int = 5
     latency_sample_size: int = 200
+    # STT + async groundedness check settings.
+    sarvam_stt_url: str = "https://api.sarvam.ai/speech-to-text"
+    sarvam_default_language_code: str = "hi-IN"
+    stt_latency_sample_size: int = 30
+    reflect_latency_sample_size: int = 30
 
+
+# BCP-47 codes for Sarvam STT, keyed by the {hi, en, ta} set LANGUAGE_SOURCES uses.
+BCP47_LANGUAGE_CODES: dict[str, str] = {
+    "hi": "hi-IN",
+    "en": "en-IN",
+    "ta": "ta-IN",
+}
 
 LANGUAGE_SOURCES: list[LanguageSource] = [
     LanguageSource(
