@@ -32,6 +32,8 @@ def chunk_native(passage: Passage) -> list[Chunk]:
 
 
 def chunk_sliding_window(passage: Passage, window_words: int = 40, overlap_words: int = 10) -> list[Chunk]:
+    if overlap_words >= window_words:
+        raise ValueError("overlap_words must be smaller than window_words")
     words = passage.text.split()
     if len(words) <= window_words:
         return [

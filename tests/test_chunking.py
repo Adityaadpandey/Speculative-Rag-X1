@@ -1,3 +1,5 @@
+import pytest
+
 from speculative_rag.chunking import (
     chunk_metadata_aware,
     chunk_native,
@@ -59,6 +61,11 @@ def test_chunk_sentence_aware_long_passage_splits_on_boundaries():
     assert len(chunks) > 1
     for c in chunks:
         assert c.text.strip().endswith(".")
+
+
+def test_chunk_sliding_window_rejects_overlap_not_smaller_than_window():
+    with pytest.raises(ValueError):
+        chunk_sliding_window(_passage("some text"), window_words=20, overlap_words=20)
 
 
 def test_chunk_metadata_aware_matches_native_boundaries_but_tags_strategy():
