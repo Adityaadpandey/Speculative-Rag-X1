@@ -34,3 +34,17 @@ def test_compute_recall_at_k_averages_hits():
 
 def test_compute_recall_at_k_empty_is_zero():
     assert compute_recall_at_k([]) == 0.0
+
+
+def test_recall_hit_scans_past_duplicate_passage_ids_to_find_k_distinct():
+    # First three retrieved chunks are all sub-chunks of the same passage "a"
+    # (as a multi-chunk strategy like sliding_window would produce); the
+    # actually-relevant passage "b" is ranked 4th. A naive "first k chunks"
+    # check would miss it at k=2; scanning to k distinct passages finds it.
+    retrieved = [
+        _chunk("a", strategy="sliding_window"),
+        _chunk("a", strategy="sliding_window"),
+        _chunk("a", strategy="sliding_window"),
+        _chunk("b", strategy="sliding_window"),
+    ]
+    assert recall_hit(retrieved, {"b"}, k=2) is True
