@@ -20,3 +20,6 @@ dev = [
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+markers = ["slow: integration tests that download models or hit local services"]
