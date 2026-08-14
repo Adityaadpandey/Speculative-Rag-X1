@@ -22,6 +22,13 @@ class Settings(BaseModel):
     sentence_max_words: int = 40
     sentence_overlap_sentences: int = 1
     top_k_values: list[int] = [1, 5, 10]
+    # Hot-path pipeline settings.
+    off_topic_threshold: float = 0.75
+    groundedness_threshold: float = 0.3
+    default_language: str = "hi"
+    default_strategy: str = "native"
+    answer_top_k: int = 5
+    latency_sample_size: int = 200
 
 
 LANGUAGE_SOURCES: list[LanguageSource] = [
