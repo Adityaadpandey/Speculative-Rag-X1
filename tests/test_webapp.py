@@ -1,9 +1,11 @@
 from fastapi.testclient import TestClient
 
 import webapp.main as webapp_main
+from speculative_rag.pipeline_schemas import RetrievalResult, ScoredChunk
+from speculative_rag.schemas import Chunk
 from webapp.main import app
 
-client = TestClient(app)
+client = TestClient(app, raise_server_exceptions=False)
 
 
 def test_get_index_returns_html():
@@ -39,3 +41,90 @@ def test_parse_collection_name_recognizes_known_language_strategy_pairs():
         "strategy": "sliding_window",
     }
     assert webapp_main._parse_collection_name("unknown_collection") is None
+
+
+class FakeEmbedder:
+    def embed_query(self, text: str) -> list[float]:
+        return [1.0, 0.0, 0.0]
+
+
+class FakeRetriever:
+    def __init__(self, result: RetrievalResult):
+        self.result = result
+
+    def search(self, query_vector, k):
+        return self.result
+
+
+class RaisingRetriever:
+    def search(self, query_vector, k):
+        raise RuntimeError("boom")
+
+
+def _scored(text, score, pid="p1"):
+    return ScoredChunk(
+        chunk=Chunk(
+            chunk_id=f"{pid}:native:0",
+            text=text,
+            language="hi",
+            query_type="DESCRIPTION",
+            source_passage_id=pid,
+            strategy="native",
+        ),
+        score=score,
+    )
+
+
+def test_post_query_returns_answered_shape(monkeypatch):
+    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("A corporation is a company.", 0.9)]))
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
+
+    response = client.post(
+        "/api/query", json={"query_text": "what is a corporation", "language": "hi", "strategy": "native"}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["outcome"] == "answered"
+    assert data["answer"]["source_passage_id"] == "p1"
+    assert data["refusal_reason"] is None
+    assert data["total_ms"] >= 0.0
+    assert [t["stage"] for t in data["timings"]] == [
+        "guardrail_unsafe",
+        "embed",
+        "retrieve",
+        "guardrail_offtopic",
+        "generate",
+        "guardrail_groundedness",
+    ]
+
+
+def test_post_query_returns_refused_shape_with_null_answer(monkeypatch):
+    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("something unrelated", 0.1)]))
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
+
+    response = client.post(
+        "/api/query", json={"query_text": "what is a corporation", "language": "hi", "strategy": "native"}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["outcome"] == "off_topic_refused"
+    assert data["answer"] is None
+    assert data["refusal_reason"] is not None
+
+
+def test_post_query_unknown_collection_returns_404(monkeypatch):
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {})
+    response = client.post("/api/query", json={"query_text": "x", "language": "hi", "strategy": "native"})
+    assert response.status_code == 404
+    assert "error" in response.json()
+
+
+def test_post_query_unhandled_exception_returns_500_json(monkeypatch):
+    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": RaisingRetriever()})
+
+    response = client.post("/api/query", json={"query_text": "x", "language": "hi", "strategy": "native"})
+    assert response.status_code == 500
+    assert response.json() == {"error": "boom"}

@@ -12,10 +12,12 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from qdrant_client import QdrantClient
 
 from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS
 from speculative_rag.embedding import Embedder
+from speculative_rag.pipeline import run_pipeline
 from speculative_rag.retrieval import Retriever
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -79,4 +81,44 @@ async def get_collections() -> dict:
         "collections": _COLLECTIONS,
         "sarvam_key_configured": bool(os.environ.get("SARVAM_API_KEY")),
         "anthropic_key_configured": bool(os.environ.get("ANTHROPIC_API_KEY")),
+    }
+
+
+class QueryRequest(BaseModel):
+    query_text: str
+    language: str
+    strategy: str
+
+
+@app.post("/api/query", response_model=None)
+async def post_query(body: QueryRequest) -> JSONResponse | dict:
+    collection_name = f"{body.language}_{body.strategy}"
+    retriever = _RETRIEVERS.get(collection_name)
+    if retriever is None:
+        return JSONResponse(status_code=404, content={"error": f"No such collection '{collection_name}'"})
+
+    result = run_pipeline(
+        body.query_text,
+        _EMBEDDER,
+        retriever,
+        off_topic_threshold=SETTINGS.off_topic_threshold,
+        groundedness_threshold=SETTINGS.groundedness_threshold,
+        top_k=SETTINGS.answer_top_k,
+    )
+
+    answer = None
+    if result.answer is not None:
+        answer = {
+            "text": result.answer.text,
+            "source_passage_id": result.answer.source_passage_id,
+            "retrieval_score": result.answer.retrieval_score,
+            "groundedness_score": result.answer.groundedness_score,
+        }
+
+    return {
+        "outcome": result.outcome.value,
+        "answer": answer,
+        "refusal_reason": result.refusal_reason,
+        "timings": [{"stage": t.stage, "elapsed_ms": t.elapsed_ms} for t in result.timings],
+        "total_ms": result.total_ms,
     }
