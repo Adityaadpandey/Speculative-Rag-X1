@@ -164,3 +164,46 @@ def test_post_transcribe_missing_api_key_returns_400(monkeypatch):
     )
     assert response.status_code == 400
     assert "SARVAM_API_KEY" in response.json()["error"]
+
+
+def test_post_reflect_returns_grounded_verdict_shape(monkeypatch):
+    from speculative_rag.reflect import ReflectVerdict
+
+    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("A corporation is a company.", 0.9)]))
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
+
+    captured = {}
+
+    def fake_check_groundedness_llm(answer_text, source_text):
+        captured["answer_text"] = answer_text
+        captured["source_text"] = source_text
+        return ReflectVerdict(grounded=True, reasoning="Matches the source directly.")
+
+    monkeypatch.setattr(webapp_main, "check_groundedness_llm", fake_check_groundedness_llm)
+
+    response = client.post(
+        "/api/reflect",
+        json={
+            "query_text": "what is a corporation",
+            "language": "hi",
+            "strategy": "native",
+            "answer_text": "A corporation is a company.",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["grounded"] is True
+    assert data["reasoning"] == "Matches the source directly."
+    assert data["reflect_latency_ms"] >= 0.0
+    assert captured["answer_text"] == "A corporation is a company."
+    assert captured["source_text"] == "A corporation is a company."
+
+
+def test_post_reflect_unknown_collection_returns_404(monkeypatch):
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {})
+    response = client.post(
+        "/api/reflect",
+        json={"query_text": "x", "language": "hi", "strategy": "native", "answer_text": "y"},
+    )
+    assert response.status_code == 404

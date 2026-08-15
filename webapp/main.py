@@ -20,6 +20,7 @@ from qdrant_client import QdrantClient
 from speculative_rag.config import BCP47_LANGUAGE_CODES, LANGUAGE_SOURCES, SETTINGS
 from speculative_rag.embedding import Embedder
 from speculative_rag.pipeline import run_pipeline
+from speculative_rag.reflect import check_groundedness_llm
 from speculative_rag.retrieval import Retriever
 from speculative_rag.stt import SarvamAPIKeyMissingError, transcribe_audio
 
@@ -147,3 +148,32 @@ async def post_transcribe(file: UploadFile = File(...), language: str = Form(...
         tmp_path.unlink(missing_ok=True)
 
     return {"transcript": transcript, "stt_latency_ms": stt_ms}
+
+
+class ReflectRequest(BaseModel):
+    query_text: str
+    language: str
+    strategy: str
+    answer_text: str
+
+
+@app.post("/api/reflect", response_model=None)
+async def post_reflect(body: ReflectRequest) -> JSONResponse | dict:
+    collection_name = f"{body.language}_{body.strategy}"
+    retriever = _RETRIEVERS.get(collection_name)
+    if retriever is None:
+        return JSONResponse(status_code=404, content={"error": f"No such collection '{collection_name}'"})
+
+    query_vector = _EMBEDDER.embed_query(body.query_text)
+    retrieval = retriever.search(query_vector, k=1)
+    source_text = retrieval.top.chunk.text if retrieval.top is not None else ""
+
+    reflect_start = time.perf_counter()
+    verdict = check_groundedness_llm(body.answer_text, source_text)
+    reflect_ms = (time.perf_counter() - reflect_start) * 1000.0
+
+    return {
+        "grounded": verdict.grounded,
+        "reasoning": verdict.reasoning,
+        "reflect_latency_ms": reflect_ms,
+    }
