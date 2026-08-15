@@ -249,7 +249,13 @@ recordBtn.addEventListener("click", async () => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     recordedChunks = [];
-    mediaRecorder = new MediaRecorder(stream);
+    const mimeCandidates = ["audio/webm", "audio/ogg", "audio/mp4"];
+    const supportedMimeType = mimeCandidates.find(
+      (candidate) => typeof MediaRecorder.isTypeSupported === "function" && MediaRecorder.isTypeSupported(candidate)
+    );
+    mediaRecorder = supportedMimeType
+      ? new MediaRecorder(stream, { mimeType: supportedMimeType })
+      : new MediaRecorder(stream);
     mediaRecorder.addEventListener("dataavailable", (e) => {
       if (e.data.size > 0) {
         recordedChunks.push(e.data);
@@ -260,8 +266,16 @@ recordBtn.addEventListener("click", async () => {
       recordCountdown.textContent = "";
       recordBtn.textContent = "Record";
       stream.getTracks().forEach((track) => track.stop());
-      const blob = new Blob(recordedChunks, { type: "audio/webm" });
-      transcribeAndQuery(blob, "recording.webm");
+      const actualMimeType = mediaRecorder.mimeType || "audio/webm";
+      const extensionByMimeType = {
+        "audio/webm": "webm",
+        "audio/ogg": "ogg",
+        "audio/mp4": "m4a",
+      };
+      const baseMimeType = actualMimeType.split(";")[0].trim();
+      const extension = extensionByMimeType[baseMimeType] ?? "webm";
+      const blob = new Blob(recordedChunks, { type: actualMimeType });
+      transcribeAndQuery(blob, `recording.${extension}`);
     });
     mediaRecorder.start();
     recordBtn.textContent = "Stop";
