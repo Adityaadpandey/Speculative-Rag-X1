@@ -128,3 +128,39 @@ def test_post_query_unhandled_exception_returns_500_json(monkeypatch):
     response = client.post("/api/query", json={"query_text": "x", "language": "hi", "strategy": "native"})
     assert response.status_code == 500
     assert response.json() == {"error": "boom"}
+
+
+def test_post_transcribe_returns_transcript_and_latency(monkeypatch):
+    def fake_transcribe_audio(path, language_code):
+        assert language_code == "hi-IN"
+        assert path.exists()
+        return "नमस्ते"
+
+    monkeypatch.setattr(webapp_main, "transcribe_audio", fake_transcribe_audio)
+
+    response = client.post(
+        "/api/transcribe",
+        files={"file": ("clip.wav", b"RIFF....", "audio/wav")},
+        data={"language": "hi"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["transcript"] == "नमस्ते"
+    assert data["stt_latency_ms"] >= 0.0
+
+
+def test_post_transcribe_missing_api_key_returns_400(monkeypatch):
+    from speculative_rag.stt import SarvamAPIKeyMissingError
+
+    def fake_transcribe_audio(path, language_code):
+        raise SarvamAPIKeyMissingError()
+
+    monkeypatch.setattr(webapp_main, "transcribe_audio", fake_transcribe_audio)
+
+    response = client.post(
+        "/api/transcribe",
+        files={"file": ("clip.wav", b"RIFF....", "audio/wav")},
+        data={"language": "hi"},
+    )
+    assert response.status_code == 400
+    assert "SARVAM_API_KEY" in response.json()["error"]

@@ -6,19 +6,22 @@ across requests -- the same "load once, serve many queries" pattern
 scripts/answer.py uses in its input loop."""
 
 import os
+import tempfile
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from qdrant_client import QdrantClient
 
-from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS
+from speculative_rag.config import BCP47_LANGUAGE_CODES, LANGUAGE_SOURCES, SETTINGS
 from speculative_rag.embedding import Embedder
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.retrieval import Retriever
+from speculative_rag.stt import SarvamAPIKeyMissingError, transcribe_audio
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 KNOWN_STRATEGIES = ["native", "sliding_window", "sentence", "metadata"]
@@ -122,3 +125,25 @@ async def post_query(body: QueryRequest) -> JSONResponse | dict:
         "timings": [{"stage": t.stage, "elapsed_ms": t.elapsed_ms} for t in result.timings],
         "total_ms": result.total_ms,
     }
+
+
+@app.post("/api/transcribe", response_model=None)
+async def post_transcribe(file: UploadFile = File(...), language: str = Form(...)) -> JSONResponse | dict:
+    language_code = BCP47_LANGUAGE_CODES.get(language, SETTINGS.sarvam_default_language_code)
+    suffix = Path(file.filename or "").suffix or ".wav"
+    contents = await file.read()
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(contents)
+        tmp_path = Path(tmp.name)
+
+    try:
+        stt_start = time.perf_counter()
+        transcript = transcribe_audio(tmp_path, language_code)
+        stt_ms = (time.perf_counter() - stt_start) * 1000.0
+    except SarvamAPIKeyMissingError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return {"transcript": transcript, "stt_latency_ms": stt_ms}
