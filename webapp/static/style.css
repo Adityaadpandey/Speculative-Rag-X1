@@ -1,0 +1,98 @@
+:root {
+  color-scheme: light dark;
+  --fg: #1a1a1a;
+  --bg: #ffffff;
+  --border: #d0d0d0;
+  --answered: #1b7f3a;
+  --refused: #b23b3b;
+  --muted: #666666;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e8e8e8;
+    --bg: #121212;
+    --border: #3a3a3a;
+    --answered: #4ade80;
+    --refused: #f87171;
+    --muted: #a0a0a0;
+  }
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  max-width: 720px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.1rem; margin-top: 1.5rem; }
+
+section { margin-bottom: 1rem; }
+
+#controls label { margin-right: 1rem; }
+
+#text-input-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+#query-text { flex: 1; padding: 0.5rem; }
+
+button { padding: 0.5rem 1rem; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+#audio-input-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+#record-countdown { font-variant-numeric: tabular-nums; color: var(--muted); }
+#audio-disabled-note { color: var(--muted); font-size: 0.85rem; }
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 0.3rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.badge-answered, .badge-grounded {
+  background: color-mix(in srgb, var(--answered) 20%, transparent);
+  color: var(--answered);
+}
+
+.badge-off_topic_refused,
+.badge-unsafe_input_refused,
+.badge-ungrounded_refused,
+.badge-not-grounded {
+  background: color-mix(in srgb, var(--refused) 20%, transparent);
+  color: var(--refused);
+}
+
+.meta { color: var(--muted); font-size: 0.85rem; }
+
+#latency-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+}
+
+#latency-table td { padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border); }
+
+.error {
+  color: var(--refused);
+  border: 1px solid var(--refused);
+  padding: 0.5rem;
+  border-radius: 0.3rem;
+}
+
+[hidden] { display: none !important; }

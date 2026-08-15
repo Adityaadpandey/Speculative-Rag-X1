@@ -1,5 +1,71 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>Speculative RAG</title></head>
-<body></body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Speculative RAG</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main>
+    <h1>Speculative RAG</h1>
+
+    <section id="controls">
+      <label>
+        Language
+        <select id="language-select"></select>
+      </label>
+      <label>
+        Strategy
+        <select id="strategy-select"></select>
+      </label>
+    </section>
+
+    <section id="text-input-row">
+      <input type="text" id="query-text" placeholder="Type a question...">
+      <button id="ask-btn">Ask</button>
+    </section>
+
+    <section id="audio-input-row">
+      <label>
+        <input type="file" id="audio-file" accept="audio/*">
+        Upload audio
+      </label>
+      <button id="record-btn">Record</button>
+      <span id="record-countdown"></span>
+      <p id="audio-disabled-note" hidden>SARVAM_API_KEY not set — text queries only</p>
+    </section>
+
+    <section id="result-panel" hidden>
+      <h2>Result</h2>
+      <span id="outcome-badge" class="badge"></span>
+      <div id="answer-block" hidden>
+        <p id="answer-text"></p>
+        <p class="meta">
+          source: <span id="answer-source-id"></span> ·
+          retrieval score: <span id="answer-retrieval-score"></span> ·
+          groundedness: <span id="answer-groundedness-score"></span>
+        </p>
+      </div>
+      <p id="refusal-text" hidden></p>
+      <table id="latency-table">
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="review-panel" hidden>
+      <h2>Groundedness review</h2>
+      <div id="review-status">checking groundedness...</div>
+      <div id="review-result" hidden>
+        <span id="review-badge" class="badge"></span>
+        <p id="review-reasoning"></p>
+        <p class="meta">latency: <span id="review-latency-ms"></span> ms</p>
+      </div>
+    </section>
+
+    <p id="error-banner" class="error" hidden></p>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
 </html>
