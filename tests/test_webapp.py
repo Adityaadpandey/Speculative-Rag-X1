@@ -180,7 +180,13 @@ def test_post_reflect_returns_grounded_verdict_shape(monkeypatch):
         captured["query_text"] = query_text
         captured["answer_text"] = answer_text
         captured["source_text"] = source_text
-        return ReflectVerdict(grounded=True, answers_query=True, reasoning="Matches the source directly.")
+        return ReflectVerdict(
+            grounded=True,
+            answers_query=True,
+            complete=True,
+            relevant=True,
+            reasoning="Matches the source directly.",
+        )
 
     monkeypatch.setattr(webapp_main, "check_groundedness_llm", fake_check_groundedness_llm)
 
@@ -197,6 +203,9 @@ def test_post_reflect_returns_grounded_verdict_shape(monkeypatch):
     data = response.json()
     assert data["grounded"] is True
     assert data["answers_query"] is True
+    assert data["complete"] is True
+    assert data["relevant"] is True
+    assert data["final_status"] == "answered"
     assert data["reasoning"] == "Matches the source directly."
     assert data["reflect_latency_ms"] >= 0.0
     assert captured["query_text"] == "what is a corporation"
@@ -204,11 +213,117 @@ def test_post_reflect_returns_grounded_verdict_shape(monkeypatch):
     assert captured["source_text"] == "A corporation is a company."
 
 
+def test_post_reflect_ungrounded_verdict_maps_to_not_answered_family(monkeypatch):
+    from speculative_rag.reflect import ReflectVerdict
+
+    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    retriever = FakeRetriever(
+        RetrievalResult(scored_chunks=[_scored("A corporation is a company.", 0.9, pid="p1")])
+    )
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
+
+    def fake_check_groundedness_llm(query_text, answer_text, source_text):
+        return ReflectVerdict(
+            grounded=True,
+            answers_query=False,
+            complete=False,
+            relevant=True,
+            reasoning="On-topic but never states the specific fact asked for.",
+        )
+
+    monkeypatch.setattr(webapp_main, "check_groundedness_llm", fake_check_groundedness_llm)
+
+    response = client.post(
+        "/api/reflect",
+        json={
+            "query_text": "what is a corporation",
+            "language": "hi",
+            "strategy": "native",
+            "answer_text": "A corporation is a company.",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["final_status"] == "not_answered"
+    assert "does not answer" in data["reason"]
+
+
 def test_post_reflect_unknown_collection_returns_404(monkeypatch):
     monkeypatch.setattr(webapp_main, "_RETRIEVERS", {})
     response = client.post(
         "/api/reflect",
         json={"query_text": "x", "language": "hi", "strategy": "native", "answer_text": "y"},
+    )
+    assert response.status_code == 404
+
+
+def test_post_synthesize_returns_answer_when_answerable(monkeypatch):
+    from speculative_rag.reflect import SynthesisVerdict
+
+    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    retriever = FakeRetriever(
+        RetrievalResult(
+            scored_chunks=[
+                _scored("Acme Corp was founded in 1998.", 0.9, pid="p_founded"),
+                _scored("Acme Corp went public in 2004.", 0.85, pid="p_ipo"),
+            ]
+        )
+    )
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
+
+    def fake_synthesize_answer_llm(query_text, candidate_texts):
+        return SynthesisVerdict(
+            answerable=True,
+            answer_text="Acme Corp was founded in 1998 and went public in 2004.",
+            source_indices=[0, 1],
+            reasoning="Combines founding year and IPO year.",
+        )
+
+    monkeypatch.setattr(webapp_main, "synthesize_answer_llm", fake_synthesize_answer_llm)
+
+    response = client.post(
+        "/api/synthesize",
+        json={"query_text": "when was Acme founded and when did it ipo", "language": "hi", "strategy": "native"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["answerable"] is True
+    assert data["answer_text"] == "Acme Corp was founded in 1998 and went public in 2004."
+    assert data["sources"] == [
+        {"source_passage_id": "p_founded", "retrieval_score": 0.9},
+        {"source_passage_id": "p_ipo", "retrieval_score": 0.85},
+    ]
+    assert data["synthesis_latency_ms"] >= 0.0
+
+
+def test_post_synthesize_returns_not_answerable_shape(monkeypatch):
+    from speculative_rag.reflect import SynthesisVerdict
+
+    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("unrelated text", 0.9, pid="p1")]))
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
+
+    def fake_synthesize_answer_llm(query_text, candidate_texts):
+        return SynthesisVerdict(answerable=False, answer_text="", source_indices=[], reasoning="Missing.")
+
+    monkeypatch.setattr(webapp_main, "synthesize_answer_llm", fake_synthesize_answer_llm)
+
+    response = client.post(
+        "/api/synthesize",
+        json={"query_text": "x", "language": "hi", "strategy": "native"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["answerable"] is False
+    assert data["answer_text"] == ""
+    assert data["sources"] == []
+
+
+def test_post_synthesize_unknown_collection_returns_404(monkeypatch):
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {})
+    response = client.post(
+        "/api/synthesize",
+        json={"query_text": "x", "language": "hi", "strategy": "native"},
     )
     assert response.status_code == 404
 
