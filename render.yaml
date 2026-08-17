@@ -1,0 +1,25 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec). Free-tier web
+# service running the Dockerfile at repo root -- BM25 sparse retrieval only
+# (no dense embedder in-process), sized to fit the free plan's 512MB RAM.
+#
+# Requires a separate Qdrant Cloud cluster (free tier: 1GB RAM / 4GB disk,
+# https://cloud.qdrant.io) -- this blueprint does not provision one. Set
+# QDRANT_URL / QDRANT_API_KEY to that cluster's values, either in the Render
+# dashboard (Environment tab) or by filling in `sync: false` vars on first
+# deploy; they are not committed here.
+services:
+  - type: web
+    name: speculative-rag-webapp
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/collections
+    envVars:
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false

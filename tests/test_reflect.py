@@ -2,11 +2,17 @@ import anthropic
 import pytest
 
 from speculative_rag.reflect import (
+    GeneratedAnswer,
     ReflectVerdict,
+    RerankAndAnswer,
+    RerankCandidate,
     RerankVerdict,
+    SelectedSource,
     SynthesisVerdict,
     check_groundedness_llm,
-    select_best_candidate_llm,
+    generate_answer_llm,
+    rerank_and_generate_llm,
+    rerank_passages_llm,
     synthesize_answer_llm,
 )
 
@@ -84,16 +90,32 @@ def test_check_groundedness_llm_real_call():
 
 
 def test_rerank_verdict_model_shape():
-    verdict = RerankVerdict(best_index=1, reasoning="Candidate 1 directly names the capital.")
-    assert verdict.best_index == 1
-    assert "capital" in verdict.reasoning
+    verdict = RerankVerdict(
+        selected_sources=[SelectedSource(source_id="c1", relevance_score=0.9)],
+        answerable=True,
+        reasoning="Candidate 1 directly names the capital.",
+    )
+    assert verdict.selected_sources == [SelectedSource(source_id="c1", relevance_score=0.9)]
+    assert verdict.answerable is True
 
 
-def test_select_best_candidate_llm_calls_sdk_with_expected_shape(monkeypatch):
+def test_rerank_verdict_supports_no_relevant_sources():
+    verdict = RerankVerdict(selected_sources=[], answerable=False, reasoning="None of these mention it.")
+    assert verdict.selected_sources == []
+    assert verdict.answerable is False
+
+
+def test_rerank_passages_llm_calls_sdk_with_expected_shape(monkeypatch):
+    from speculative_rag.reflect import _RerankParsed, _RerankSelection
+
     captured = {}
 
     class _FakeParsedMessage:
-        parsed_output = RerankVerdict(best_index=1, reasoning="Candidate 1 answers the question.")
+        parsed_output = _RerankParsed(
+            selections=[_RerankSelection(index=1, relevance_score=0.87)],
+            answerable=True,
+            reasoning="Candidate 1 answers the question.",
+        )
 
     class _FakeMessages:
         def parse(self, **kwargs):
@@ -106,23 +128,32 @@ def test_select_best_candidate_llm_calls_sdk_with_expected_shape(monkeypatch):
 
     monkeypatch.setattr("speculative_rag.reflect.anthropic.Anthropic", _FakeAnthropic)
 
-    verdict = select_best_candidate_llm(
+    verdict = rerank_passages_llm(
         "what is the capital of France",
-        ["Paris has many museums.", "The capital of France is Paris."],
+        [
+            RerankCandidate(source_id="museums", text="Paris has many museums."),
+            RerankCandidate(source_id="capital", text="The capital of France is Paris."),
+        ],
     )
 
-    assert verdict.best_index == 1
+    assert verdict.selected_sources == [SelectedSource(source_id="capital", relevance_score=0.87)]
+    assert verdict.answerable is True
     assert captured["model"] == "claude-sonnet-5"
-    assert captured["output_format"] is RerankVerdict
     joined = " ".join(m["content"] for m in captured["messages"])
     assert "what is the capital of France" in joined
     assert "[0] Paris has many museums." in joined
     assert "[1] The capital of France is Paris." in joined
 
 
-def test_select_best_candidate_llm_clamps_out_of_range_index(monkeypatch):
+def test_rerank_passages_llm_filters_out_of_range_index(monkeypatch):
+    from speculative_rag.reflect import _RerankParsed, _RerankSelection
+
     class _FakeParsedMessage:
-        parsed_output = RerankVerdict(best_index=5, reasoning="hallucinated index")
+        parsed_output = _RerankParsed(
+            selections=[_RerankSelection(index=5, relevance_score=0.9)],
+            answerable=True,
+            reasoning="hallucinated index",
+        )
 
     class _FakeMessages:
         def parse(self, **kwargs):
@@ -134,20 +165,267 @@ def test_select_best_candidate_llm_clamps_out_of_range_index(monkeypatch):
 
     monkeypatch.setattr("speculative_rag.reflect.anthropic.Anthropic", _FakeAnthropic)
 
-    verdict = select_best_candidate_llm("q", ["a", "b"])
-    assert verdict.best_index == 0
+    verdict = rerank_passages_llm("q", [RerankCandidate(source_id="a", text="a"), RerankCandidate(source_id="b", text="b")])
+    assert verdict.selected_sources == []
+    assert verdict.answerable is False
+
+
+def test_rerank_passages_llm_never_claims_answerable_with_no_selections(monkeypatch):
+    # Never trust answerable=true from the model alone if it selected nothing
+    # -- that combination would let a downstream generator run on no evidence.
+    from speculative_rag.reflect import _RerankParsed
+
+    class _FakeParsedMessage:
+        parsed_output = _RerankParsed(selections=[], answerable=True, reasoning="contradictory output")
+
+    class _FakeMessages:
+        def parse(self, **kwargs):
+            return _FakeParsedMessage()
+
+    class _FakeAnthropic:
+        def __init__(self):
+            self.messages = _FakeMessages()
+
+    monkeypatch.setattr("speculative_rag.reflect.anthropic.Anthropic", _FakeAnthropic)
+
+    verdict = rerank_passages_llm("q", [RerankCandidate(source_id="a", text="a")])
+    assert verdict.answerable is False
+    assert verdict.selected_sources == []
+
+
+def test_rerank_passages_llm_returns_no_selection_when_nothing_relevant(monkeypatch):
+    from speculative_rag.reflect import _RerankParsed
+
+    class _FakeParsedMessage:
+        parsed_output = _RerankParsed(
+            selections=[], answerable=False, reasoning="None of the candidates mention this topic."
+        )
+
+    class _FakeMessages:
+        def parse(self, **kwargs):
+            return _FakeParsedMessage()
+
+    class _FakeAnthropic:
+        def __init__(self):
+            self.messages = _FakeMessages()
+
+    monkeypatch.setattr("speculative_rag.reflect.anthropic.Anthropic", _FakeAnthropic)
+
+    verdict = rerank_passages_llm(
+        "what is the capital of France", [RerankCandidate(source_id="cats", text="Cats are popular pets.")]
+    )
+    assert verdict.selected_sources == []
+    assert verdict.answerable is False
 
 
 @pytest.mark.slow
-def test_select_best_candidate_llm_real_call():
+def test_rerank_passages_llm_real_call():
     try:
-        verdict = select_best_candidate_llm(
+        verdict = rerank_passages_llm(
             "what is the capital of France",
-            ["Paris has many museums and a famous tower.", "The capital of France is Paris."],
+            [
+                RerankCandidate(source_id="c0", text="Paris has many museums and a famous tower."),
+                RerankCandidate(source_id="c1", text="The capital of France is Paris."),
+            ],
         )
     except anthropic.AnthropicError as exc:
         pytest.skip(f"Anthropic API not configured: {exc}")
-    assert verdict.best_index in (0, 1)
+    assert verdict.reasoning
+
+
+def test_generated_answer_model_shape():
+    answer = GeneratedAnswer(answerable=True, answer_text="Paris is the capital of France.", reasoning="Stated directly.")
+    assert answer.answerable is True
+    assert "Paris" in answer.answer_text
+
+
+def test_generate_answer_llm_calls_sdk_with_expected_shape(monkeypatch):
+    captured = {}
+
+    class _FakeParsedMessage:
+        parsed_output = GeneratedAnswer(
+            answerable=True,
+            answer_text="The Manhattan Project successfully produced the atomic bomb, which helped end World War II.",
+            reasoning="Directly stated in the evidence.",
+        )
+
+    class _FakeMessages:
+        def parse(self, **kwargs):
+            captured.update(kwargs)
+            return _FakeParsedMessage()
+
+    class _FakeAnthropic:
+        def __init__(self):
+            self.messages = _FakeMessages()
+
+    monkeypatch.setattr("speculative_rag.reflect.anthropic.Anthropic", _FakeAnthropic)
+
+    answer = generate_answer_llm(
+        "What was the immediate impact of the success of the Manhattan Project?",
+        ["The Manhattan Project and its atomic bomb helped bring an end to World War II."],
+    )
+
+    assert answer.answerable is True
+    assert "atomic bomb" in answer.answer_text
+    assert captured["model"] == "claude-sonnet-5"
+    assert captured["output_format"] is GeneratedAnswer
+    joined = " ".join(m["content"] for m in captured["messages"])
+    assert "What was the immediate impact of the success of the Manhattan Project?" in joined
+    assert "The Manhattan Project and its atomic bomb helped bring an end to World War II." in joined
+    assert "Do not add unsupported facts" in joined
+
+
+def test_generate_answer_llm_clears_text_when_not_answerable(monkeypatch):
+    class _FakeParsedMessage:
+        parsed_output = GeneratedAnswer(
+            answerable=False, answer_text="ignored — should be cleared", reasoning="Evidence doesn't cover this."
+        )
+
+    class _FakeMessages:
+        def parse(self, **kwargs):
+            return _FakeParsedMessage()
+
+    class _FakeAnthropic:
+        def __init__(self):
+            self.messages = _FakeMessages()
+
+    monkeypatch.setattr("speculative_rag.reflect.anthropic.Anthropic", _FakeAnthropic)
+
+    answer = generate_answer_llm("unrelated question", ["unrelated evidence"])
+    assert answer.answerable is False
+    assert answer.answer_text == ""
+
+
+@pytest.mark.slow
+def test_generate_answer_llm_real_call_answers_manhattan_project_question():
+    try:
+        answer = generate_answer_llm(
+            "What was the immediate impact of the success of the Manhattan Project?",
+            ["The Manhattan Project and its atomic bomb helped bring an end to World War II."],
+        )
+    except anthropic.AnthropicError as exc:
+        pytest.skip(f"Anthropic API not configured: {exc}")
+    assert answer.answerable is True
+    assert "World War" in answer.answer_text or "war" in answer.answer_text.lower()
+
+
+def test_rerank_and_generate_llm_calls_sdk_with_expected_shape(monkeypatch):
+    from speculative_rag.reflect import _RerankAndGenerateParsed, _RerankAndGenerateSelection
+
+    captured = {}
+
+    class _FakeParsedMessage:
+        parsed_output = _RerankAndGenerateParsed(
+            selections=[_RerankAndGenerateSelection(index=1, relevance_score=0.9)],
+            selection_found=True,
+            answerable=True,
+            answer_text="The capital of France is Paris.",
+            reasoning="Candidate 1 names the capital directly.",
+        )
+
+    class _FakeMessages:
+        def parse(self, **kwargs):
+            captured.update(kwargs)
+            return _FakeParsedMessage()
+
+    class _FakeAnthropic:
+        def __init__(self):
+            self.messages = _FakeMessages()
+
+    monkeypatch.setattr("speculative_rag.reflect.anthropic.Anthropic", _FakeAnthropic)
+
+    verdict = rerank_and_generate_llm(
+        "what is the capital of France",
+        [
+            RerankCandidate(source_id="museums", text="Paris has many museums."),
+            RerankCandidate(source_id="capital", text="The capital of France is Paris."),
+        ],
+    )
+
+    assert verdict.selected_sources == [SelectedSource(source_id="capital", relevance_score=0.9)]
+    assert verdict.selection_found is True
+    assert verdict.answerable is True
+    assert verdict.answer_text == "The capital of France is Paris."
+    assert captured["model"] == "claude-sonnet-5"
+    assert captured["output_format"] is _RerankAndGenerateParsed
+    joined = " ".join(m["content"] for m in captured["messages"])
+    assert "what is the capital of France" in joined
+    assert "[0] Paris has many museums." in joined
+    assert "[1] The capital of France is Paris." in joined
+
+
+def test_rerank_and_generate_llm_clears_selection_and_answer_when_nothing_relevant(monkeypatch):
+    from speculative_rag.reflect import _RerankAndGenerateParsed
+
+    class _FakeParsedMessage:
+        parsed_output = _RerankAndGenerateParsed(
+            selections=[], selection_found=False, answerable=False, answer_text="",
+            reasoning="None of the candidates mention this topic.",
+        )
+
+    class _FakeMessages:
+        def parse(self, **kwargs):
+            return _FakeParsedMessage()
+
+    class _FakeAnthropic:
+        def __init__(self):
+            self.messages = _FakeMessages()
+
+    monkeypatch.setattr("speculative_rag.reflect.anthropic.Anthropic", _FakeAnthropic)
+
+    verdict = rerank_and_generate_llm(
+        "what is the capital of France", [RerankCandidate(source_id="cats", text="Cats are popular pets.")]
+    )
+    assert verdict.selected_sources == []
+    assert verdict.selection_found is False
+    assert verdict.answerable is False
+    assert verdict.answer_text == ""
+
+
+def test_rerank_and_generate_llm_never_answerable_without_a_selection(monkeypatch):
+    # Same defensive contract as rerank_passages_llm/generate_answer_llm: never
+    # trust answerable=true from the model if selection_found is false or no
+    # sources were actually selected -- that combination would let a
+    # downstream caller treat an unsupported guess as a real answer.
+    from speculative_rag.reflect import _RerankAndGenerateParsed
+
+    class _FakeParsedMessage:
+        parsed_output = _RerankAndGenerateParsed(
+            selections=[],
+            selection_found=True,
+            answerable=True,
+            answer_text="a guess with no selected evidence",
+            reasoning="contradictory output",
+        )
+
+    class _FakeMessages:
+        def parse(self, **kwargs):
+            return _FakeParsedMessage()
+
+    class _FakeAnthropic:
+        def __init__(self):
+            self.messages = _FakeMessages()
+
+    monkeypatch.setattr("speculative_rag.reflect.anthropic.Anthropic", _FakeAnthropic)
+
+    verdict = rerank_and_generate_llm("q", [RerankCandidate(source_id="a", text="a")])
+    assert verdict.selection_found is False
+    assert verdict.answerable is False
+    assert verdict.answer_text == ""
+
+
+@pytest.mark.slow
+def test_rerank_and_generate_llm_real_call():
+    try:
+        verdict = rerank_and_generate_llm(
+            "what is the capital of France",
+            [
+                RerankCandidate(source_id="c0", text="Paris has many museums and a famous tower."),
+                RerankCandidate(source_id="c1", text="The capital of France is Paris."),
+            ],
+        )
+    except anthropic.AnthropicError as exc:
+        pytest.skip(f"Anthropic API not configured: {exc}")
     assert verdict.reasoning
 
 

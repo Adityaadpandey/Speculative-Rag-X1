@@ -20,16 +20,15 @@ Defaults to hi/native. Requires the collection to already exist
 import os
 import sys
 import pandas as pd
-from qdrant_client import QdrantClient
 
 from speculative_rag.answer_status import combine_verdict
-from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS
+from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS, get_qdrant_client
 from speculative_rag.data import load_validation_sample
-from speculative_rag.embedding import Embedder
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import RagOutcome
 from speculative_rag.reflect import check_groundedness_llm
 from speculative_rag.retrieval import Retriever
+from speculative_rag.sparse_embedding import SparseEmbedder
 from speculative_rag.text_utils import tokenize
 
 _GOLD_ANSWER_FIELD = {
@@ -62,8 +61,8 @@ def run_eval(language: str, strategy: str) -> None:
     collection_name = f"{language}_{strategy}"
 
     print(f"Loading embedder and connecting to collection '{collection_name}'...")
-    embedder = Embedder()
-    client = QdrantClient(path=str(SETTINGS.qdrant_path))
+    embedder = SparseEmbedder(language)
+    client = get_qdrant_client()
     if not client.collection_exists(collection_name):
         print(f"No such collection '{collection_name}'. Run scripts.run_recall_eval first.")
         return
@@ -79,7 +78,7 @@ def run_eval(language: str, strategy: str) -> None:
         selected = [int(x) for x in passages["is_selected"]]
         relevant_texts = {texts[i] for i, sel in enumerate(selected) if sel == 1}
 
-        query_text = row["query"] if source.text_field == "Translated_passages" else row["Eng_Query"]
+        query_text = row[source.query_field]
         gold_answer = row[gold_field]
 
         result = run_pipeline(

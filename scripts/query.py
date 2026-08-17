@@ -6,14 +6,21 @@ scripts/answer.py for that. Usage: uv run python -m scripts.query [language] [st
 import sys
 
 from qdrant_client import QdrantClient
+from qdrant_client.models import SparseVector
 
-from speculative_rag.config import SETTINGS
-from speculative_rag.embedding import Embedder
+from speculative_rag.config import get_qdrant_client
+from speculative_rag.indexing import SPARSE_VECTOR_NAME
 from speculative_rag.schemas import Chunk
+from speculative_rag.sparse_embedding import SparseEmbedder, SparseVectorData
 
 
-def search(client: QdrantClient, collection_name: str, query_vector: list[float], k: int = 5):
-    results = client.query_points(collection_name=collection_name, query=query_vector, limit=k).points
+def search(client: QdrantClient, collection_name: str, query_vector: SparseVectorData, k: int = 5):
+    results = client.query_points(
+        collection_name=collection_name,
+        query=SparseVector(indices=query_vector.indices, values=query_vector.values),
+        using=SPARSE_VECTOR_NAME,
+        limit=k,
+    ).points
     return [(Chunk(**r.payload), r.score) for r in results]
 
 
@@ -23,8 +30,8 @@ def main() -> None:
     collection_name = f"{language}_{strategy}"
 
     print(f"Loading embedder and connecting to collection '{collection_name}'...")
-    embedder = Embedder()
-    client = QdrantClient(path=str(SETTINGS.qdrant_path))
+    embedder = SparseEmbedder(language)
+    client = get_qdrant_client()
 
     if not client.collection_exists(collection_name):
         available = [c.name for c in client.get_collections().collections]

@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "anthropic>=0.122.0",
     "fastapi>=0.141.1",
+    "fastembed>=0.8.0",
     "httpx>=0.28.1",
     "pandas>=3.0.5",
     "pyarrow>=25.0.1",
@@ -14,9 +15,16 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-multipart>=0.0.32",
     "qdrant-client>=1.19.0",
-    "sentence-transformers>=5.7.0",
     "uvicorn[standard]>=0.52.3",
 ]
+
+# sentence-transformers pulls in torch (~1GB+ installed) and is only used by
+# scripts/run_embedding_model_eval.py and the dense-Embedder tests -- the
+# deployed webapp runs entirely on BM25 sparse retrieval (sparse_embedding.py)
+# and must NOT pull this in, or the free-tier host's RAM/image-size budget
+# breaks. Local dev: `uv sync --extra dense` to get it back.
+[project.optional-dependencies]
+dense = ["sentence-transformers>=5.7.0"]
 
 [dependency-groups]
 dev = [

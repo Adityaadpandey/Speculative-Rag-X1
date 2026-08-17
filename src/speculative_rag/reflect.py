@@ -86,7 +86,15 @@ def check_groundedness_llm(query_text: str, answer_text: str, source_text: str) 
 # semantic relevance across the candidates, instead of surface overlap, is
 # the fix -- reported as its own latency number, never counted against the
 # hot-path latency budget.
-_RERANK_PROMPT_TEMPLATE = """You are choosing which candidate passage best answers a question.
+#
+# This returns structured selections (source id + relevance score), never
+# prose explanations of the pick, and it has to be able to select nothing at
+# all: when none of the candidates actually answer the question,
+# answerable=false and selected_sources=[] rather than forcing a
+# best-of-a-bad-lot guess -- a forced guess is exactly what let the
+# downstream generator invent an answer from an irrelevant passage before.
+_RERANK_PROMPT_TEMPLATE = """You are selecting which candidate passages, if any, contain the evidence \
+needed to answer a question. Do not answer the question yourself -- only judge relevance.
 
 Question:
 {query_text}
@@ -94,18 +102,46 @@ Question:
 Candidate passages:
 {candidates_block}
 
-Reply with the 0-based index of the candidate that most directly and correctly answers the \
-question, and a brief one or two sentence reasoning."""
+For every candidate that is actually relevant to answering the question, report its 0-based index and \
+a relevance score from 0.0 to 1.0. Do not include candidates that are merely on-topic but do not bear on \
+the answer.
+
+If NONE of the candidates contain information that answers the question, return an empty selection and \
+set answerable to false -- do not force a selection just because candidates exist.
+
+Give a brief one-sentence reasoning."""
 
 
-class RerankVerdict(BaseModel):
-    best_index: int
+class _RerankSelection(BaseModel):
+    index: int
+    relevance_score: float
+
+
+class _RerankParsed(BaseModel):
+    selections: list[_RerankSelection]
+    answerable: bool
     reasoning: str
 
 
-def select_best_candidate_llm(query_text: str, candidate_texts: list[str]) -> RerankVerdict:
+class RerankCandidate(BaseModel):
+    source_id: str
+    text: str
+
+
+class SelectedSource(BaseModel):
+    source_id: str
+    relevance_score: float
+
+
+class RerankVerdict(BaseModel):
+    selected_sources: list[SelectedSource]
+    answerable: bool
+    reasoning: str
+
+
+def rerank_passages_llm(query_text: str, candidates: list[RerankCandidate]) -> RerankVerdict:
     client = anthropic.Anthropic()
-    candidates_block = "\n".join(f"[{i}] {text}" for i, text in enumerate(candidate_texts))
+    candidates_block = "\n".join(f"[{i}] {c.text}" for i, c in enumerate(candidates))
     response = client.messages.parse(
         model=_MODEL,
         max_tokens=2048,
@@ -117,13 +153,163 @@ def select_best_candidate_llm(query_text: str, candidate_texts: list[str]) -> Re
                 ),
             }
         ],
-        output_format=RerankVerdict,
+        output_format=_RerankParsed,
     )
-    verdict = response.parsed_output
-    assert verdict is not None
-    if not (0 <= verdict.best_index < len(candidate_texts)):
-        verdict.best_index = 0
-    return verdict
+    parsed = response.parsed_output
+    assert parsed is not None
+
+    selected_sources = [
+        SelectedSource(source_id=candidates[s.index].source_id, relevance_score=s.relevance_score)
+        for s in parsed.selections
+        if 0 <= s.index < len(candidates)
+    ]
+    answerable = parsed.answerable and bool(selected_sources)
+    if not answerable:
+        selected_sources = []
+    return RerankVerdict(selected_sources=selected_sources, answerable=answerable, reasoning=parsed.reasoning)
+
+
+# Real answer generation from evidence, used to regenerate the final answer
+# once rerank_passages_llm has found the right passage(s) -- the step the
+# fast extractive hot path can't do (it can only return a verbatim span,
+# which is why an on-topic-but-non-answering rank-1 passage produces a bad
+# "answer" with groundedness ~1.0 by construction). This is a real
+# instruction-following generation call: answer the question, not
+# "summarize this passage" -- and it needs to be able to say the evidence is
+# insufficient rather than inventing something, same never-hallucinate
+# contract as synthesize_answer_llm below.
+_GENERATE_ANSWER_PROMPT_TEMPLATE = """Question:
+{query_text}
+
+Evidence:
+{evidence_block}
+
+Instructions:
+Answer the question directly using only the evidence above.
+Do not add unsupported facts, and do not invent anything not present in the evidence.
+Do not answer a different but related question -- answer exactly what was asked.
+If the evidence does not answer the question, say so explicitly and set answerable to false.
+Keep the answer concise and direct (one or two sentences)."""
+
+
+class GeneratedAnswer(BaseModel):
+    answerable: bool
+    answer_text: str
+    reasoning: str
+
+
+def generate_answer_llm(query_text: str, evidence_texts: list[str]) -> GeneratedAnswer:
+    client = anthropic.Anthropic()
+    evidence_block = "\n".join(f"- {text}" for text in evidence_texts)
+    response = client.messages.parse(
+        model=_MODEL,
+        max_tokens=2048,
+        messages=[
+            {
+                "role": "user",
+                "content": _GENERATE_ANSWER_PROMPT_TEMPLATE.format(
+                    query_text=query_text, evidence_block=evidence_block
+                ),
+            }
+        ],
+        output_format=GeneratedAnswer,
+    )
+    parsed = response.parsed_output
+    assert parsed is not None
+    if not parsed.answerable:
+        parsed.answer_text = ""
+    return parsed
+
+
+# Latency optimization for answer_orchestrator.resolve_recovery:
+# rerank_passages_llm and generate_answer_llm above are two separate network
+# round trips doing "which passage is right" then "answer from it" -- this
+# combines both into one call, the same pattern synthesize_answer_llm below
+# already uses (select sources + answer in a single structured response).
+# Cuts one full round trip out of the common recovery path.
+# check_groundedness_llm stays a fully separate, independent verification
+# call either way -- only the selection and generation steps merge, never
+# the verification of them.
+_RERANK_AND_GENERATE_PROMPT_TEMPLATE = """You are given a question and a pool of candidate passages. In ONE pass: \
+(1) decide which candidate passages, if any, actually contain the evidence needed to answer the question, and \
+(2) if any do, answer the question directly using ONLY that evidence.
+
+Question:
+{query_text}
+
+Candidate passages:
+{candidates_block}
+
+Step 1 -- selection: for every candidate that is actually relevant to answering the question, report its 0-based \
+index and a relevance score from 0.0 to 1.0. Do not include candidates that are merely on-topic but do not bear \
+on the answer. If NONE of the candidates contain information that answers the question, return an empty \
+selection and set selection_found to false -- do not force a selection just because candidates exist.
+
+Step 2 -- answer: if step 1 found relevant evidence, answer the question directly using only that evidence. Do \
+not add unsupported facts, do not invent anything not present in the evidence, and do not answer a different but \
+related question -- answer exactly what was asked. Keep the answer concise and direct (one or two sentences). If \
+the selected evidence turns out not to actually answer the question, or step 1 found nothing, set answerable to \
+false and leave answer_text empty rather than guessing.
+
+Give a brief one-sentence reasoning covering both the selection and the answer."""
+
+
+class _RerankAndGenerateSelection(BaseModel):
+    index: int
+    relevance_score: float
+
+
+class _RerankAndGenerateParsed(BaseModel):
+    selections: list[_RerankAndGenerateSelection]
+    selection_found: bool
+    answerable: bool
+    answer_text: str
+    reasoning: str
+
+
+class RerankAndAnswer(BaseModel):
+    selected_sources: list[SelectedSource]
+    selection_found: bool
+    answerable: bool
+    answer_text: str
+    reasoning: str
+
+
+def rerank_and_generate_llm(query_text: str, candidates: list[RerankCandidate]) -> RerankAndAnswer:
+    client = anthropic.Anthropic()
+    candidates_block = "\n".join(f"[{i}] {c.text}" for i, c in enumerate(candidates))
+    response = client.messages.parse(
+        model=_MODEL,
+        max_tokens=2048,
+        messages=[
+            {
+                "role": "user",
+                "content": _RERANK_AND_GENERATE_PROMPT_TEMPLATE.format(
+                    query_text=query_text, candidates_block=candidates_block
+                ),
+            }
+        ],
+        output_format=_RerankAndGenerateParsed,
+    )
+    parsed = response.parsed_output
+    assert parsed is not None
+
+    selected_sources = [
+        SelectedSource(source_id=candidates[s.index].source_id, relevance_score=s.relevance_score)
+        for s in parsed.selections
+        if 0 <= s.index < len(candidates)
+    ]
+    selection_found = parsed.selection_found and bool(selected_sources)
+    if not selection_found:
+        selected_sources = []
+    answerable = selection_found and parsed.answerable and bool(parsed.answer_text)
+    return RerankAndAnswer(
+        selected_sources=selected_sources,
+        selection_found=selection_found,
+        answerable=answerable,
+        answer_text=parsed.answer_text if answerable else "",
+        reasoning=parsed.reasoning,
+    )
 
 
 # Async multi-passage synthesis: when extractive top-1 selection fails

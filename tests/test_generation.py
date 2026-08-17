@@ -55,6 +55,25 @@ def test_select_span_prefers_type_matching_sentence_over_higher_overlap_topical_
     assert span == "A score of 660 or better is required."
 
 
+def test_select_span_breaks_overlap_tie_toward_later_sentence():
+    # Real production regression: the intro sentence restates the passage's
+    # own subject ("Manhattan Project") and ties on raw overlap with the
+    # sentence that actually answers the query, since "impact" never appears
+    # verbatim anywhere -- lexical overlap alone can't tell them apart. When
+    # tied, prefer the later sentence: definition-then-consequence is the
+    # dominant pattern for "what was the impact/result of X" queries.
+    passage = (
+        "Essay on The Manhattan Project - The Manhattan Project The Manhattan "
+        "Project was to see if making an atomic bomb possible. "
+        "The success of this project would forever change the world forever "
+        "making it known that something this powerful can be manmade."
+    )
+    span = select_answer_span(
+        "what was the immediate impact of the success of the manhattan project?", passage
+    )
+    assert span.startswith("The success of this project")
+
+
 def test_select_span_falls_back_to_overlap_when_no_candidate_satisfies_type():
     # Numeric query, but no sentence in the passage contains a digit at all —
     # the type filter must not eliminate every candidate; fall back to the

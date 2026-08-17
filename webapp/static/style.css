@@ -72,12 +72,34 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .badge-off_topic_refused,
 .badge-unsafe_input_refused,
 .badge-ungrounded_refused,
-.badge-not-grounded {
+.badge-not-grounded,
+.badge-not_answered,
+.badge-ungrounded,
+.badge-insufficient_evidence,
+.badge-fallback {
   background: color-mix(in srgb, var(--refused) 20%, transparent);
   color: var(--refused);
 }
 
 .meta { color: var(--muted); font-size: 0.85rem; }
+
+#resolving-note { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); }
+#resolving-elapsed { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.spinner {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid var(--border);
+  border-top-color: var(--muted);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
 #latency-table {
   width: 100%;

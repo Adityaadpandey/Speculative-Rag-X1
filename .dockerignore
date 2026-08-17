@@ -1,0 +1,22 @@
+# Secrets -- must never be baked into the image; Render injects real values
+# as environment variables at runtime instead. COPY ignores .gitignore, so
+# this needs its own explicit entry even though .env is already gitignored.
+.env
+**/.env
+
+# Dataset -- not needed at runtime, the webapp only reads Qdrant
+MSMARCO-XI/
+
+# Local dev / build artifacts
+.venv
+__pycache__/
+*.py[oc]
+*.egg-info
+.pytest_cache/
+.git/
+.superpowers/
+docs/
+tests/
+
+# Local-only Qdrant storage -- production points at QDRANT_URL instead
+results/

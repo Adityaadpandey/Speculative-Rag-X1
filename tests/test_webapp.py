@@ -76,7 +76,7 @@ def _scored(text, score, pid="p1"):
 
 
 def test_post_query_returns_answered_shape(monkeypatch):
-    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    monkeypatch.setattr(webapp_main, "_EMBEDDERS", {"hi": FakeEmbedder()})
     retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("A corporation is a company.", 0.9)]))
     monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
 
@@ -101,8 +101,10 @@ def test_post_query_returns_answered_shape(monkeypatch):
 
 
 def test_post_query_returns_refused_shape_with_null_answer(monkeypatch):
-    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
-    retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("something unrelated", 0.1)]))
+    # Under BM25, score=0.0 (no shared vocabulary at all) is the only
+    # reliable off-topic signal -- see guardrails.is_off_topic.
+    monkeypatch.setattr(webapp_main, "_EMBEDDERS", {"hi": FakeEmbedder()})
+    retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("something unrelated", 0.0)]))
     monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
 
     response = client.post(
@@ -123,7 +125,7 @@ def test_post_query_unknown_collection_returns_404(monkeypatch):
 
 
 def test_post_query_unhandled_exception_returns_500_json(monkeypatch):
-    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    monkeypatch.setattr(webapp_main, "_EMBEDDERS", {"hi": FakeEmbedder()})
     monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": RaisingRetriever()})
 
     response = client.post("/api/query", json={"query_text": "x", "language": "hi", "strategy": "native"})
@@ -170,7 +172,7 @@ def test_post_transcribe_missing_api_key_returns_400(monkeypatch):
 def test_post_reflect_returns_grounded_verdict_shape(monkeypatch):
     from speculative_rag.reflect import ReflectVerdict
 
-    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    monkeypatch.setattr(webapp_main, "_EMBEDDERS", {"hi": FakeEmbedder()})
     retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("A corporation is a company.", 0.9)]))
     monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
 
@@ -216,7 +218,7 @@ def test_post_reflect_returns_grounded_verdict_shape(monkeypatch):
 def test_post_reflect_ungrounded_verdict_maps_to_not_answered_family(monkeypatch):
     from speculative_rag.reflect import ReflectVerdict
 
-    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    monkeypatch.setattr(webapp_main, "_EMBEDDERS", {"hi": FakeEmbedder()})
     retriever = FakeRetriever(
         RetrievalResult(scored_chunks=[_scored("A corporation is a company.", 0.9, pid="p1")])
     )
@@ -260,7 +262,7 @@ def test_post_reflect_unknown_collection_returns_404(monkeypatch):
 def test_post_synthesize_returns_answer_when_answerable(monkeypatch):
     from speculative_rag.reflect import SynthesisVerdict
 
-    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    monkeypatch.setattr(webapp_main, "_EMBEDDERS", {"hi": FakeEmbedder()})
     retriever = FakeRetriever(
         RetrievalResult(
             scored_chunks=[
@@ -299,7 +301,7 @@ def test_post_synthesize_returns_answer_when_answerable(monkeypatch):
 def test_post_synthesize_returns_not_answerable_shape(monkeypatch):
     from speculative_rag.reflect import SynthesisVerdict
 
-    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    monkeypatch.setattr(webapp_main, "_EMBEDDERS", {"hi": FakeEmbedder()})
     retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("unrelated text", 0.9, pid="p1")]))
     monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
 
@@ -328,10 +330,10 @@ def test_post_synthesize_unknown_collection_returns_404(monkeypatch):
     assert response.status_code == 404
 
 
-def test_post_rerank_picks_llm_chosen_candidate(monkeypatch):
-    from speculative_rag.reflect import RerankVerdict
+def test_post_rerank_returns_structured_selected_sources(monkeypatch):
+    from speculative_rag.reflect import RerankVerdict, SelectedSource
 
-    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    monkeypatch.setattr(webapp_main, "_EMBEDDERS", {"hi": FakeEmbedder()})
     retriever = FakeRetriever(
         RetrievalResult(
             scored_chunks=[
@@ -344,12 +346,16 @@ def test_post_rerank_picks_llm_chosen_candidate(monkeypatch):
 
     captured = {}
 
-    def fake_select_best_candidate_llm(query_text, candidate_texts):
+    def fake_rerank_passages_llm(query_text, candidates):
         captured["query_text"] = query_text
-        captured["candidate_texts"] = candidate_texts
-        return RerankVerdict(best_index=1, reasoning="Candidate 1 defines a corporation.")
+        captured["candidate_texts"] = [c.text for c in candidates]
+        return RerankVerdict(
+            selected_sources=[SelectedSource(source_id=candidates[1].source_id, relevance_score=0.93)],
+            answerable=True,
+            reasoning="Candidate 1 defines a corporation.",
+        )
 
-    monkeypatch.setattr(webapp_main, "select_best_candidate_llm", fake_select_best_candidate_llm)
+    monkeypatch.setattr(webapp_main, "rerank_passages_llm", fake_rerank_passages_llm)
 
     response = client.post(
         "/api/rerank",
@@ -357,10 +363,10 @@ def test_post_rerank_picks_llm_chosen_candidate(monkeypatch):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["source_passage_id"] == "p_rank2"
-    assert "corporation" in data["text"]
-    assert data["answer_found"] is True
-    assert data["retrieval_score"] == 0.80
+    assert data["answerable"] is True
+    assert data["selected_sources"] == [
+        {"source_id": "p_rank2:native:0", "source_passage_id": "p_rank2", "relevance_score": 0.93}
+    ]
     assert data["reasoning"] == "Candidate 1 defines a corporation."
     assert data["rerank_latency_ms"] >= 0.0
     assert captured["query_text"] == "what is a corporation"
@@ -370,31 +376,19 @@ def test_post_rerank_picks_llm_chosen_candidate(monkeypatch):
     ]
 
 
-def test_post_rerank_no_answer_found_when_no_token_overlap(monkeypatch):
-    """Test that when select_answer_span returns None (no token overlap),
-    the response has text=None and answer_found=False."""
+def test_post_rerank_returns_empty_selection_when_nothing_relevant(monkeypatch):
     from speculative_rag.reflect import RerankVerdict
 
-    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    monkeypatch.setattr(webapp_main, "_EMBEDDERS", {"hi": FakeEmbedder()})
     retriever = FakeRetriever(
-        RetrievalResult(
-            scored_chunks=[
-                _scored("Cats are popular household pets.", 0.91, pid="p_rank1"),
-            ]
-        )
+        RetrievalResult(scored_chunks=[_scored("Cats are popular household pets.", 0.91, pid="p_rank1")])
     )
     monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
 
-    def fake_select_best_candidate_llm(query_text, candidate_texts):
-        return RerankVerdict(best_index=0, reasoning="Only candidate available.")
+    def fake_rerank_passages_llm(query_text, candidates):
+        return RerankVerdict(selected_sources=[], answerable=False, reasoning="No candidate answers this.")
 
-    monkeypatch.setattr(webapp_main, "select_best_candidate_llm", fake_select_best_candidate_llm)
-
-    def fake_select_answer_span(query_text, passage_text):
-        # Simulate no token overlap: return None
-        return None
-
-    monkeypatch.setattr(webapp_main, "select_answer_span", fake_select_answer_span)
+    monkeypatch.setattr(webapp_main, "rerank_passages_llm", fake_rerank_passages_llm)
 
     response = client.post(
         "/api/rerank",
@@ -402,10 +396,8 @@ def test_post_rerank_no_answer_found_when_no_token_overlap(monkeypatch):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["text"] is None
-    assert data["answer_found"] is False
-    assert data["source_passage_id"] == "p_rank1"
-    assert data["retrieval_score"] == 0.91
+    assert data["selected_sources"] == []
+    assert data["answerable"] is False
 
 
 def test_post_rerank_unknown_collection_returns_404(monkeypatch):
@@ -415,3 +407,160 @@ def test_post_rerank_unknown_collection_returns_404(monkeypatch):
         json={"query_text": "x", "language": "hi", "strategy": "native"},
     )
     assert response.status_code == 404
+
+
+def _fake_outcome(**overrides):
+    from speculative_rag.answer_orchestrator import AnswerOutcome
+    from speculative_rag.answer_status import FinalAnswerStatus
+    from speculative_rag.pipeline_schemas import PipelineResult, RagOutcome, StageTiming
+
+    base = dict(
+        final_status=FinalAnswerStatus.ANSWERED,
+        answer_text="The Manhattan Project successfully produced the atomic bomb, which helped bring an "
+        "end to World War II.",
+        source_passage_ids=["p_ww2"],
+        reason="Directly supported by the evidence.",
+        initial_answer_valid=False,
+        initial_answerable=False,
+        rerank_triggered=True,
+        rerank_latency_ms=812.4,
+        selected_source_ids=["p_ww2:native:0"],
+        reranked_answer_generated=True,
+        regenerated_answer_valid=True,
+        regenerated_answerable=True,
+        synthesis_triggered=False,
+        total_end_to_end_latency_ms=1523.9,
+        pipeline_result=PipelineResult(
+            outcome=RagOutcome.ANSWERED,
+            timings=[StageTiming(stage="embed", elapsed_ms=1.2), StageTiming(stage="retrieve", elapsed_ms=42.0)],
+            num_retrieved=5,
+            num_evidence_candidates=5,
+        ),
+    )
+    base.update(overrides)
+    return AnswerOutcome(**base)
+
+
+def test_post_answer_returns_fast_provisional_shape_then_polling_returns_final_answer(monkeypatch):
+    monkeypatch.setattr(webapp_main, "_EMBEDDERS", {"hi": FakeEmbedder()})
+    retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("irrelevant for this test", 0.9)]))
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
+
+    captured = {}
+
+    def fake_resolve_recovery(query_text, pipeline_result, **kwargs):
+        captured["query_text"] = query_text
+        captured["pipeline_result"] = pipeline_result
+        return _fake_outcome()
+
+    monkeypatch.setattr(webapp_main, "resolve_recovery", fake_resolve_recovery)
+
+    response = client.post(
+        "/api/answer",
+        json={
+            "query_text": "What was the immediate impact of the success of the Manhattan Project?",
+            "language": "hi",
+            "strategy": "native",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "resolving"
+    assert data["request_id"]
+    assert "pipeline" in data
+    assert captured["query_text"] == "What was the immediate impact of the success of the Manhattan Project?"
+
+    poll = client.get(f"/api/answer/{data['request_id']}")
+    assert poll.status_code == 200
+    result = poll.json()
+    assert result["status"] == "done"
+    assert result["final_status"] == "answered"
+    assert "atomic bomb" in result["answer"]["text"]
+    assert result["answer"]["source_passage_ids"] == ["p_ww2"]
+    assert result["instrumentation"]["rerank_triggered"] is True
+    assert result["instrumentation"]["reranked_answer_generated"] is True
+    assert result["instrumentation"]["regenerated_answer_valid"] is True
+    assert result["instrumentation"]["synthesis_triggered"] is False
+    assert result["instrumentation"]["selected_source_ids"] == ["p_ww2:native:0"]
+    assert result["instrumentation"]["recovery_latency_ms"] == 1523.9
+    assert result["pipeline"]["outcome"] == "answered"
+    assert [t["stage"] for t in result["pipeline"]["timings"]] == ["embed", "retrieve"]
+
+
+def test_post_answer_never_returns_answered_badge_for_unvalidated_result(monkeypatch):
+    from speculative_rag.answer_status import FinalAnswerStatus
+
+    monkeypatch.setattr(webapp_main, "_EMBEDDERS", {"hi": FakeEmbedder()})
+    retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("unrelated text", 0.9)]))
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
+
+    def fake_resolve_recovery(query_text, pipeline_result, **kwargs):
+        return _fake_outcome(
+            final_status=FinalAnswerStatus.FALLBACK,
+            answer_text=None,
+            source_passage_ids=[],
+            reason="multi-passage synthesis produced an answer but it failed validation",
+            regenerated_answer_valid=False,
+            regenerated_answerable=False,
+            synthesis_triggered=True,
+        )
+
+    monkeypatch.setattr(webapp_main, "resolve_recovery", fake_resolve_recovery)
+
+    response = client.post(
+        "/api/answer",
+        json={"query_text": "x", "language": "hi", "strategy": "native"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "resolving"
+
+    poll = client.get(f"/api/answer/{data['request_id']}")
+    assert poll.status_code == 200
+    result = poll.json()
+    assert result["final_status"] == "fallback"
+    assert result["answer"] is None
+    assert result["instrumentation"]["synthesis_triggered"] is True
+
+
+def test_post_answer_unknown_collection_returns_404(monkeypatch):
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {})
+    response = client.post(
+        "/api/answer",
+        json={"query_text": "x", "language": "hi", "strategy": "native"},
+    )
+    assert response.status_code == 404
+
+
+def test_get_answer_unknown_request_id_returns_404():
+    response = client.get("/api/answer/does-not-exist")
+    assert response.status_code == 404
+    assert "error" in response.json()
+
+
+def test_get_answer_returns_resolving_status_while_pending(monkeypatch):
+    monkeypatch.setitem(webapp_main._PENDING_ANSWERS, "req-pending", {"status": "resolving"})
+    response = client.get("/api/answer/req-pending")
+    assert response.status_code == 200
+    assert response.json() == {"status": "resolving"}
+
+
+def test_pending_answers_evicts_oldest_when_over_cap(monkeypatch):
+    from collections import OrderedDict
+
+    monkeypatch.setattr(webapp_main, "_MAX_PENDING_ANSWERS", 2)
+    monkeypatch.setattr(webapp_main, "_PENDING_ANSWERS", OrderedDict())
+    monkeypatch.setattr(webapp_main, "_EMBEDDERS", {"hi": FakeEmbedder()})
+    retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("something unrelated", 0.0)]))
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
+    monkeypatch.setattr(webapp_main, "resolve_recovery", lambda *a, **k: _fake_outcome())
+
+    request_ids = []
+    for _ in range(3):
+        response = client.post("/api/answer", json={"query_text": "x", "language": "hi", "strategy": "native"})
+        request_ids.append(response.json()["request_id"])
+
+    assert len(webapp_main._PENDING_ANSWERS) == 2
+    assert request_ids[0] not in webapp_main._PENDING_ANSWERS
+    assert request_ids[1] in webapp_main._PENDING_ANSWERS
+    assert request_ids[2] in webapp_main._PENDING_ANSWERS

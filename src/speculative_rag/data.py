@@ -22,7 +22,9 @@ def load_validation_sample(parquet_path: Path, sample_size: int, seed: int) -> p
     return df.sample(n=n, random_state=seed).reset_index(drop=True)
 
 
-def build_query_records(df: pd.DataFrame, language: str, text_field: str) -> list[QueryRecord]:
+def build_query_records(
+    df: pd.DataFrame, language: str, text_field: str, query_field: str = "query"
+) -> list[QueryRecord]:
     records = []
     for _, row in df.iterrows():
         passages = row["passages"]
@@ -35,7 +37,7 @@ def build_query_records(df: pd.DataFrame, language: str, text_field: str) -> lis
                 query_id=int(row["query_id"]),
                 language=language,
                 query_type=row["query_type"],
-                query_text=row["query"],
+                query_text=row[query_field],
                 passage_ids=passage_ids,
                 relevant_passage_ids=relevant,
             )

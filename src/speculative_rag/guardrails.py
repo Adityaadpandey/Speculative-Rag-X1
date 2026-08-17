@@ -24,8 +24,20 @@ def check_unsafe_input(query_text: str) -> str | None:
 
 
 def is_off_topic(top_score: float, threshold: float) -> bool:
-    """Off-topic when the best retrieval score is below threshold — the corpus
-    doesn't cover this query. Reuses the score already computed at retrieval."""
+    """Off-topic when the best retrieval score is below threshold -- the corpus
+    just doesn't cover this query. Reuses the score already computed at
+    retrieval.
+
+    With BM25 sparse retrieval (unbounded scores, no fixed max), a positive
+    score does NOT mean "topically relevant" -- one incidentally shared word
+    between the query and an unrelated passage is enough to produce a
+    positive score regardless of real relevance (I've actually seen an
+    off-topic query outscore a relevant one). The only score value that
+    reliably means "not covered by the corpus" is exactly 0 -- zero shared
+    vocabulary with anything indexed. So off_topic_threshold is a near-zero
+    floor, not a relevance cutoff; anything above it gets passed through to
+    the downstream extractive/groundedness/answer-type guardrails, which are
+    what actually catch a bad-but-nonzero-score match."""
     return top_score < threshold
 
 

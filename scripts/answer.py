@@ -7,13 +7,11 @@ Defaults to the SETTINGS.default_language / default_strategy collection (hi_nati
 
 import sys
 
-from qdrant_client import QdrantClient
-
-from speculative_rag.config import SETTINGS
-from speculative_rag.embedding import Embedder
+from speculative_rag.config import SETTINGS, get_qdrant_client
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import RagOutcome
 from speculative_rag.retrieval import Retriever
+from speculative_rag.sparse_embedding import SparseEmbedder
 
 
 def main() -> None:
@@ -22,8 +20,8 @@ def main() -> None:
     collection_name = f"{language}_{strategy}"
 
     print(f"Loading embedder and connecting to collection '{collection_name}'...")
-    embedder = Embedder()
-    client = QdrantClient(path=str(SETTINGS.qdrant_path))
+    embedder = SparseEmbedder(language)
+    client = get_qdrant_client()
 
     if not client.collection_exists(collection_name):
         available = [c.name for c in client.get_collections().collections]

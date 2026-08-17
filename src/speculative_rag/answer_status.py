@@ -21,6 +21,13 @@ class FinalAnswerStatus(str, Enum):
     NOT_ANSWERED = "not_answered"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
     UNGROUNDED = "ungrounded"
+    # The initial answer failed validation, rerank+regenerate was tried and
+    # also failed validation, and the deeper multi-passage synthesis
+    # fallback was tried too and still couldn't produce a validated answer.
+    # Kept distinct from INSUFFICIENT_EVIDENCE (no candidate evidence was
+    # ever found at all) so instrumentation can tell "never tried" apart
+    # from "tried the full recovery chain and still couldn't answer."
+    FALLBACK = "fallback"
 
 
 _NON_ANSWERED_OUTCOME_STATUS: dict[RagOutcome, FinalAnswerStatus] = {

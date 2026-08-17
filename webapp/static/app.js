@@ -17,44 +17,49 @@ const recordCountdown = document.getElementById("record-countdown");
 const audioDisabledNote = document.getElementById("audio-disabled-note");
 const resultPanel = document.getElementById("result-panel");
 const outcomeBadge = document.getElementById("outcome-badge");
+const resolvingNote = document.getElementById("resolving-note");
+const resolvingStage = document.getElementById("resolving-stage");
+const resolvingElapsed = document.getElementById("resolving-elapsed");
 const answerBlock = document.getElementById("answer-block");
 const answerText = document.getElementById("answer-text");
-const answerSourceId = document.getElementById("answer-source-id");
-const answerRetrievalScore = document.getElementById("answer-retrieval-score");
-const answerGroundednessScore = document.getElementById("answer-groundedness-score");
+const answerSourceIds = document.getElementById("answer-source-ids");
 const refusalText = document.getElementById("refusal-text");
+const resultReason = document.getElementById("result-reason");
 const latencyTableBody = document.querySelector("#latency-table tbody");
+const totalE2eLatencyMs = document.getElementById("total-e2e-latency-ms");
 const reviewPanel = document.getElementById("review-panel");
-const reviewStatus = document.getElementById("review-status");
-const reviewResult = document.getElementById("review-result");
-const reviewBadge = document.getElementById("review-badge");
-const reviewReasoning = document.getElementById("review-reasoning");
-const reviewLatencyMs = document.getElementById("review-latency-ms");
+const reviewInitialValid = document.getElementById("review-initial-valid");
+const reviewInitialAnswerable = document.getElementById("review-initial-answerable");
 const rerankPanel = document.getElementById("rerank-panel");
-const rerankStatus = document.getElementById("rerank-status");
-const rerankResult = document.getElementById("rerank-result");
-const rerankText = document.getElementById("rerank-text");
-const rerankSourceId = document.getElementById("rerank-source-id");
-const rerankRetrievalScore = document.getElementById("rerank-retrieval-score");
 const rerankLatencyMs = document.getElementById("rerank-latency-ms");
-const rerankReasoning = document.getElementById("rerank-reasoning");
-const reviewFinalStatus = document.getElementById("review-final-status");
-const reviewFinalReason = document.getElementById("review-final-reason");
+const rerankSelectedSources = document.getElementById("rerank-selected-sources");
+const rerankAnswerGenerated = document.getElementById("rerank-answer-generated");
+const rerankRegeneratedValid = document.getElementById("rerank-regenerated-valid");
+const rerankRegeneratedAnswerable = document.getElementById("rerank-regenerated-answerable");
 const synthesisPanel = document.getElementById("synthesis-panel");
-const synthesisStatus = document.getElementById("synthesis-status");
-const synthesisResult = document.getElementById("synthesis-result");
-const synthesisAnswer = document.getElementById("synthesis-answer");
-const synthesisAnswerable = document.getElementById("synthesis-answerable");
-const synthesisSources = document.getElementById("synthesis-sources");
-const synthesisLatencyMs = document.getElementById("synthesis-latency-ms");
-const synthesisReasoning = document.getElementById("synthesis-reasoning");
+const synthesisNote = document.getElementById("synthesis-note");
 const errorBanner = document.getElementById("error-banner");
 
-const OUTCOME_LABELS = {
+// Keyed by FinalAnswerStatus, the status of the FINAL validated answer --
+// never the raw fast-path outcome, which can look "answered" from the
+// extractive hot path alone while still being ungrounded or off-target.
+const FINAL_STATUS_LABELS = {
   answered: "ANSWERED",
-  off_topic_refused: "OFF-TOPIC",
-  unsafe_input_refused: "UNSAFE INPUT",
-  ungrounded_refused: "UNGROUNDED",
+  not_answered: "NOT ANSWERED",
+  ungrounded: "UNGROUNDED",
+  insufficient_evidence: "INSUFFICIENT EVIDENCE",
+  fallback: "FALLBACK — NO VALIDATED ANSWER",
+};
+
+// Keyed by the "stage" field answer_orchestrator.resolve_recovery reports
+// via on_stage(), surfaced live while GET /api/answer/{request_id} is still
+// "resolving" so the wait doesn't read as frozen.
+const STAGE_LABELS = {
+  starting: "validating and recovering in the background",
+  validating: "validating the fast answer",
+  reranking: "reranking passages and regenerating an answer",
+  verifying: "verifying the regenerated answer is grounded",
+  synthesizing: "synthesizing an answer across multiple passages",
 };
 
 function showError(message) {
@@ -86,7 +91,7 @@ async function loadCollections() {
     opt.textContent = language;
     languageSelect.appendChild(opt);
   }
-  languageSelect.value = languages.includes("hi") ? "hi" : (languages[0] ?? "");
+  languageSelect.value = languages.includes("en") ? "en" : (languages[0] ?? "");
 
   function refreshStrategies() {
     const strategies = strategiesByLanguage[languageSelect.value] ?? [];
@@ -114,165 +119,125 @@ function resetPanels() {
   resultPanel.hidden = true;
   reviewPanel.hidden = true;
   rerankPanel.hidden = true;
+  synthesisPanel.hidden = true;
   answerBlock.hidden = true;
   refusalText.hidden = true;
-  reviewResult.hidden = true;
-  reviewStatus.hidden = false;
-  rerankResult.hidden = true;
-  rerankStatus.hidden = false;
-  synthesisPanel.hidden = true;
-  synthesisResult.hidden = true;
-  synthesisStatus.hidden = false;
   latencyTableBody.innerHTML = "";
 }
 
-function renderResult(data) {
-  resultPanel.hidden = false;
-  outcomeBadge.textContent = OUTCOME_LABELS[data.outcome] ?? data.outcome;
-  outcomeBadge.className = `badge badge-${data.outcome}`;
-
-  if (data.outcome === "answered") {
-    answerBlock.hidden = false;
-    refusalText.hidden = true;
-    answerText.textContent = data.answer.text;
-    answerSourceId.textContent = data.answer.source_passage_id;
-    answerRetrievalScore.textContent = data.answer.retrieval_score.toFixed(3);
-    answerGroundednessScore.textContent = data.answer.groundedness_score.toFixed(3);
-  } else {
-    answerBlock.hidden = true;
-    refusalText.hidden = false;
-    refusalText.textContent = data.refusal_reason;
-  }
-
+function renderLatencyTable(pipeline) {
   latencyTableBody.innerHTML = "";
-  for (const timing of data.timings) {
+  for (const timing of pipeline.timings) {
     const row = document.createElement("tr");
     row.innerHTML = `<td>${timing.stage}</td><td>${timing.elapsed_ms.toFixed(2)} ms</td>`;
     latencyTableBody.appendChild(row);
   }
   const totalRow = document.createElement("tr");
-  totalRow.innerHTML = `<td><strong>TOTAL</strong></td><td><strong>${data.total_ms.toFixed(2)} ms</strong></td>`;
+  totalRow.innerHTML = `<td><strong>fast path TOTAL</strong></td><td><strong>${pipeline.total_ms.toFixed(2)} ms</strong></td>`;
   latencyTableBody.appendChild(totalRow);
 }
 
-async function startReview(queryText, answerTextValue) {
+// Shown the moment POST /api/answer returns (within the ~200ms latency
+// budget) -- the raw extractive answer, not yet validated. Recovery
+// (validation/rerank/regenerate/synthesis) is still running in the
+// background at this point.
+function renderFastPath(data) {
+  resultPanel.hidden = false;
+  resolvingNote.hidden = false;
+  outcomeBadge.hidden = true;
+  resultReason.textContent = "";
+  refusalText.hidden = true;
+
+  if (data.fast_answer) {
+    answerBlock.hidden = false;
+    answerText.textContent = data.fast_answer.text;
+    answerSourceIds.textContent = data.fast_answer.source_passage_ids.join(", ") || "none";
+  } else {
+    answerBlock.hidden = true;
+  }
+
+  renderLatencyTable(data.pipeline);
+  totalE2eLatencyMs.textContent = "…";
+  resolvingStage.textContent = STAGE_LABELS.starting;
+  resolvingElapsed.textContent = "";
+}
+
+// Shown once GET /api/answer/{request_id} reports status "done" -- the
+// validated final answer. This is the only point at which final_status can
+// legitimately be "answered".
+function renderResult(data) {
+  resultPanel.hidden = false;
+  resolvingNote.hidden = true;
+  outcomeBadge.hidden = false;
+  outcomeBadge.textContent = FINAL_STATUS_LABELS[data.final_status] ?? data.final_status;
+  outcomeBadge.className = `badge badge-${data.final_status}`;
+  resultReason.textContent = data.reason ?? "";
+
+  if (data.final_status === "answered" && data.answer) {
+    answerBlock.hidden = false;
+    refusalText.hidden = true;
+    answerText.textContent = data.answer.text;
+    answerSourceIds.textContent = data.answer.source_passage_ids.join(", ") || "none";
+  } else {
+    answerBlock.hidden = true;
+    refusalText.hidden = false;
+    refusalText.textContent = data.reason ?? "No validated answer could be produced.";
+  }
+
+  renderLatencyTable(data.pipeline);
+  totalE2eLatencyMs.textContent = data.instrumentation.recovery_latency_ms.toFixed(2);
+
+  renderInstrumentation(data.instrumentation);
+}
+
+function renderInstrumentation(instrumentation) {
   reviewPanel.hidden = false;
-  reviewStatus.hidden = false;
-  reviewResult.hidden = true;
+  reviewInitialValid.textContent = instrumentation.initial_answer_valid;
+  reviewInitialAnswerable.textContent = instrumentation.initial_answerable;
 
-  if (!state.anthropicKeyConfigured) {
-    reviewStatus.textContent = "ANTHROPIC_API_KEY not set — skipping groundedness review";
-    return;
+  rerankPanel.hidden = !instrumentation.rerank_triggered;
+  if (instrumentation.rerank_triggered) {
+    rerankLatencyMs.textContent = (instrumentation.rerank_latency_ms ?? 0).toFixed(2);
+    rerankSelectedSources.textContent = instrumentation.selected_source_ids.join(", ") || "none";
+    rerankAnswerGenerated.textContent = instrumentation.reranked_answer_generated;
+    rerankRegeneratedValid.textContent = instrumentation.regenerated_answer_valid;
+    rerankRegeneratedAnswerable.textContent = instrumentation.regenerated_answerable;
   }
 
-  reviewStatus.textContent = "checking groundedness...";
-  try {
-    const response = await fetch("/api/reflect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query_text: queryText,
-        language: languageSelect.value,
-        strategy: strategySelect.value,
-        answer_text: answerTextValue,
-      }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      reviewStatus.textContent = `review failed: ${data.error ?? "unknown error"}`;
-      return;
-    }
-    reviewStatus.hidden = true;
-    reviewResult.hidden = false;
-    reviewBadge.textContent = data.grounded ? "GROUNDED" : "NOT GROUNDED";
-    reviewBadge.className = `badge ${data.grounded ? "badge-grounded" : "badge-not-grounded"}`;
-    reviewReasoning.textContent = data.reasoning;
-    reviewLatencyMs.textContent = data.reflect_latency_ms.toFixed(2);
-    reviewFinalStatus.textContent = data.final_status ?? "pending";
-    reviewFinalReason.textContent = data.reason ?? "";
-    if (data.final_status && data.final_status !== "answered") {
-      startSynthesis(queryText);
-    }
-  } catch (err) {
-    reviewStatus.textContent = `review failed: ${err.message}`;
+  synthesisPanel.hidden = !instrumentation.synthesis_triggered;
+  if (instrumentation.synthesis_triggered) {
+    synthesisNote.textContent =
+      instrumentation.regenerated_answer_valid === false
+        ? "Regeneration from the reranked evidence failed validation, so multi-passage synthesis ran as a deeper fallback."
+        : "Multi-passage synthesis ran as part of answer recovery.";
   }
 }
 
-async function startRerank(queryText) {
-  rerankPanel.hidden = false;
-  rerankStatus.hidden = false;
-  rerankResult.hidden = true;
+const POLL_INTERVAL_MS = 700;
 
-  if (!state.anthropicKeyConfigured) {
-    rerankStatus.textContent = "ANTHROPIC_API_KEY not set — skipping rerank check";
-    return;
-  }
-
-  rerankStatus.textContent = "reranking candidates...";
-  try {
-    const response = await fetch("/api/rerank", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query_text: queryText,
-        language: languageSelect.value,
-        strategy: strategySelect.value,
-      }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      rerankStatus.textContent = `rerank failed: ${data.error ?? "unknown error"}`;
+async function pollForFinalAnswer(requestId) {
+  const pollStart = performance.now();
+  for (;;) {
+    let response;
+    let data;
+    try {
+      response = await fetch(`/api/answer/${requestId}`);
+      data = await response.json();
+    } catch (err) {
+      showError(`polling for result failed: ${err.message}`);
       return;
     }
-    rerankStatus.hidden = true;
-    rerankResult.hidden = false;
-    rerankText.textContent = data.text;
-    rerankSourceId.textContent = data.source_passage_id;
-    rerankRetrievalScore.textContent = data.retrieval_score.toFixed(3);
-    rerankLatencyMs.textContent = data.rerank_latency_ms.toFixed(2);
-    rerankReasoning.textContent = data.reasoning;
-  } catch (err) {
-    rerankStatus.textContent = `rerank failed: ${err.message}`;
-  }
-}
-
-async function startSynthesis(queryText) {
-  synthesisPanel.hidden = false;
-  synthesisStatus.hidden = false;
-  synthesisResult.hidden = true;
-
-  if (!state.anthropicKeyConfigured) {
-    synthesisStatus.textContent = "ANTHROPIC_API_KEY not set — skipping synthesis";
-    return;
-  }
-
-  synthesisStatus.textContent = "checking multiple passages...";
-  try {
-    const response = await fetch("/api/synthesize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query_text: queryText,
-        language: languageSelect.value,
-        strategy: strategySelect.value,
-      }),
-    });
-    const data = await response.json();
     if (!response.ok) {
-      synthesisStatus.textContent = `synthesis failed: ${data.error ?? "unknown error"}`;
+      showError(data.error ?? "polling for result failed");
       return;
     }
-    synthesisStatus.hidden = true;
-    synthesisResult.hidden = false;
-    synthesisAnswerable.textContent = data.answerable;
-    synthesisAnswer.textContent = data.answerable
-      ? data.answer_text
-      : "The retrieved evidence does not contain enough information to answer this fully.";
-    synthesisSources.textContent = data.sources.map((s) => s.source_passage_id).join(", ") || "none";
-    synthesisLatencyMs.textContent = data.synthesis_latency_ms.toFixed(2);
-    synthesisReasoning.textContent = data.reasoning;
-  } catch (err) {
-    synthesisStatus.textContent = `synthesis failed: ${err.message}`;
+    if (data.status === "done") {
+      renderResult(data);
+      return;
+    }
+    resolvingStage.textContent = STAGE_LABELS[data.stage] ?? STAGE_LABELS.starting;
+    resolvingElapsed.textContent = `${((performance.now() - pollStart) / 1000).toFixed(1)}s`;
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
 }
 
@@ -281,10 +246,15 @@ async function runQuery(queryText) {
   if (!queryText.trim()) {
     return;
   }
+
+  resultPanel.hidden = false;
+  resolvingNote.hidden = false;
+  outcomeBadge.hidden = true;
+
   let response;
   let data;
   try {
-    response = await fetch("/api/query", {
+    response = await fetch("/api/answer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -296,20 +266,17 @@ async function runQuery(queryText) {
     data = await response.json();
   } catch (err) {
     showError(`query failed: ${err.message}`);
+    resultPanel.hidden = true;
     return;
   }
   if (!response.ok) {
     showError(data.error ?? "query failed");
+    resultPanel.hidden = true;
     return;
   }
 
-  renderResult(data);
-  if (data.outcome === "answered") {
-    startReview(queryText, data.answer.text);
-    startRerank(queryText);
-  } else if (data.outcome === "insufficient_evidence") {
-    startSynthesis(queryText);
-  }
+  renderFastPath(data);
+  await pollForFinalAnswer(data.request_id);
 }
 
 askBtn.addEventListener("click", () => {

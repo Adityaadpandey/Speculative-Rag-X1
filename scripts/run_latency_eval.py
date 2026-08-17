@@ -10,15 +10,13 @@ off-topic threshold). Shows whether the <200ms target holds.
 Usage: uv run python -m scripts.run_latency_eval
 """
 
-from qdrant_client import QdrantClient
-
-from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS
+from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS, get_qdrant_client
 from speculative_rag.data import build_query_records, load_validation_sample
-from speculative_rag.embedding import Embedder
 from speculative_rag.latency import summarize
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import RagOutcome
 from speculative_rag.retrieval import Retriever
+from speculative_rag.sparse_embedding import SparseEmbedder
 
 
 def _language_source(language: str):
@@ -77,10 +75,10 @@ def main() -> None:
 
     source = _language_source(language)
     df = load_validation_sample(source.parquet_path, SETTINGS.latency_sample_size, SETTINGS.sample_seed)
-    records = build_query_records(df, source.language, source.text_field)
+    records = build_query_records(df, source.language, source.text_field, source.query_field)
 
-    embedder = Embedder()
-    client = QdrantClient(path=str(SETTINGS.qdrant_path))
+    embedder = SparseEmbedder(language)
+    client = get_qdrant_client()
     if not client.collection_exists(collection_name):
         available = [c.name for c in client.get_collections().collections]
         print(f"No such collection '{collection_name}'. Available: {available}")

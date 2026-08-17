@@ -1,39 +1,50 @@
 """The web UI: a thin FastAPI HTTP layer over the same pipeline used
 everywhere else (pipeline.run_pipeline, stt.transcribe_audio,
-reflect.check_groundedness_llm). Loads Embedder + one Retriever per
-available Qdrant collection ONCE at startup (module-level state), reused
-across requests -- the same "load once, serve many queries" pattern
-scripts/answer.py uses in its input loop."""
+reflect.check_groundedness_llm). Loads one SparseEmbedder per language
+(BM25's tokenizer/stemmer setup is language-specific, see
+sparse_embedding.py) plus one Retriever per available Qdrant collection
+once at startup (module-level state), reused across requests -- the same
+"load once, serve many queries" pattern scripts/answer.py uses in its
+input loop."""
 
+import asyncio
 import os
 import tempfile
 import time
+import uuid
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from qdrant_client import QdrantClient
 
+from speculative_rag.answer_orchestrator import resolve_recovery
 from speculative_rag.answer_status import combine_verdict
-from speculative_rag.config import BCP47_LANGUAGE_CODES, LANGUAGE_SOURCES, SETTINGS
-from speculative_rag.embedding import Embedder
-from speculative_rag.generation import select_answer_span
+from speculative_rag.config import BCP47_LANGUAGE_CODES, LANGUAGE_SOURCES, SETTINGS, get_qdrant_client
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import RagOutcome
-from speculative_rag.reflect import check_groundedness_llm, select_best_candidate_llm, synthesize_answer_llm
+from speculative_rag.reflect import RerankCandidate, check_groundedness_llm, rerank_passages_llm, synthesize_answer_llm
 from speculative_rag.retrieval import Retriever
+from speculative_rag.sparse_embedding import SparseEmbedder
 from speculative_rag.stt import SarvamAPIKeyMissingError, transcribe_audio
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 KNOWN_STRATEGIES = ["native", "sliding_window", "sentence", "metadata"]
 KNOWN_LANGUAGES = [source.language for source in LANGUAGE_SOURCES]
 
-_EMBEDDER: Embedder | None = None
+_EMBEDDERS: dict[str, SparseEmbedder] = {}
 _RETRIEVERS: dict[str, Retriever] = {}
 _COLLECTIONS: list[dict[str, str]] = []
+
+# In-memory store for /api/answer's two-phase fast-path/recovery split (see
+# post_answer below). Bounded FIFO so a long-running instance doesn't grow
+# without limit -- this is a single-process demo/eval webapp, not a queue
+# that needs durability across restarts.
+_MAX_PENDING_ANSWERS = 500
+_PENDING_ANSWERS: OrderedDict[str, dict] = OrderedDict()
 
 
 def _parse_collection_name(name: str) -> dict[str, str] | None:
@@ -47,9 +58,9 @@ def _parse_collection_name(name: str) -> dict[str, str] | None:
 
 
 def _load_state() -> None:
-    global _EMBEDDER, _RETRIEVERS, _COLLECTIONS
-    _EMBEDDER = Embedder()
-    client = QdrantClient(path=str(SETTINGS.qdrant_path))
+    global _EMBEDDERS, _RETRIEVERS, _COLLECTIONS
+    _EMBEDDERS = {source.language: SparseEmbedder(source.language) for source in LANGUAGE_SOURCES}
+    client = get_qdrant_client()
     retrievers: dict[str, Retriever] = {}
     collections: list[dict[str, str]] = []
     for collection in client.get_collections().collections:
@@ -101,16 +112,18 @@ class QueryRequest(BaseModel):
 async def post_query(body: QueryRequest) -> JSONResponse | dict:
     collection_name = f"{body.language}_{body.strategy}"
     retriever = _RETRIEVERS.get(collection_name)
-    if retriever is None:
+    embedder = _EMBEDDERS.get(body.language)
+    if retriever is None or embedder is None:
         return JSONResponse(status_code=404, content={"error": f"No such collection '{collection_name}'"})
 
     result = run_pipeline(
         body.query_text,
-        _EMBEDDER,
+        embedder,
         retriever,
         off_topic_threshold=SETTINGS.off_topic_threshold,
         groundedness_threshold=SETTINGS.groundedness_threshold,
         top_k=SETTINGS.answer_top_k,
+        evidence_top_n=SETTINGS.evidence_top_n,
     )
 
     answer = None
@@ -128,7 +141,131 @@ async def post_query(body: QueryRequest) -> JSONResponse | dict:
         "refusal_reason": result.refusal_reason,
         "timings": [{"stage": t.stage, "elapsed_ms": t.elapsed_ms} for t in result.timings],
         "total_ms": result.total_ms,
+        "num_retrieved": result.num_retrieved,
+        "num_evidence_candidates": result.num_evidence_candidates,
     }
+
+
+class AnswerRequest(BaseModel):
+    query_text: str
+    language: str
+    strategy: str
+
+
+def _serialize_pipeline(pipeline_result) -> dict:
+    return {
+        "outcome": pipeline_result.outcome.value,
+        "timings": [{"stage": t.stage, "elapsed_ms": t.elapsed_ms} for t in pipeline_result.timings],
+        "total_ms": pipeline_result.total_ms,
+        "num_retrieved": pipeline_result.num_retrieved,
+        "num_evidence_candidates": pipeline_result.num_evidence_candidates,
+    }
+
+
+def _serialize_outcome(outcome) -> dict:
+    return {
+        "status": "done",
+        "final_status": outcome.final_status.value,
+        "answer": (
+            {"text": outcome.answer_text, "source_passage_ids": outcome.source_passage_ids}
+            if outcome.answer_text is not None
+            else None
+        ),
+        "reason": outcome.reason,
+        "instrumentation": {
+            "initial_answer_valid": outcome.initial_answer_valid,
+            "initial_answerable": outcome.initial_answerable,
+            "rerank_triggered": outcome.rerank_triggered,
+            "rerank_latency_ms": outcome.rerank_latency_ms,
+            "selected_source_ids": outcome.selected_source_ids,
+            "reranked_answer_generated": outcome.reranked_answer_generated,
+            "regenerated_answer_valid": outcome.regenerated_answer_valid,
+            "regenerated_answerable": outcome.regenerated_answerable,
+            "synthesis_triggered": outcome.synthesis_triggered,
+            # Only the recovery phase's own latency -- the fast path is
+            # already reported separately in "pipeline" and is what's
+            # actually measured against the ~200ms latency budget. This
+            # number runs async, after the HTTP response below has already
+            # been sent, so it's explicitly not counted against that budget.
+            "recovery_latency_ms": outcome.total_end_to_end_latency_ms,
+        },
+        "pipeline": _serialize_pipeline(outcome.pipeline_result),
+    }
+
+
+def _stage_reporter(request_id: str):
+    # Called from the background thread resolve_recovery runs on (see
+    # asyncio.to_thread below) -- plain dict assignment is safe here since
+    # each request_id has exactly one writer at a time.
+    def on_stage(stage: str) -> None:
+        _PENDING_ANSWERS[request_id] = {"status": "resolving", "stage": stage}
+
+    return on_stage
+
+
+async def _run_recovery(request_id: str, query_text: str, pipeline_result) -> None:
+    outcome = await asyncio.to_thread(
+        resolve_recovery, query_text, pipeline_result, on_stage=_stage_reporter(request_id)
+    )
+    _PENDING_ANSWERS[request_id] = _serialize_outcome(outcome)
+
+
+@app.post("/api/answer", response_model=None)
+async def post_answer(body: AnswerRequest, background_tasks: BackgroundTasks) -> JSONResponse | dict:
+    """Returns the fast extractive path immediately (this is what's measured
+    against the ~200ms latency budget) with a request_id, then -- always, so
+    the returned answer is never a stale/unvalidated one shown next to it --
+    runs the LLM validate -> rerank -> regenerate -> re-validate ->
+    multi-passage-synthesis recovery chain
+    (speculative_rag.answer_orchestrator.resolve_recovery) in a background
+    thread. Poll GET /api/answer/{request_id} for the validated result once
+    it's ready; every LLM call in that chain is a real network round trip
+    and is deliberately never allowed to block this response. final_status
+    only reads "answered" once the returned answer has actually passed
+    validation."""
+    collection_name = f"{body.language}_{body.strategy}"
+    retriever = _RETRIEVERS.get(collection_name)
+    embedder = _EMBEDDERS.get(body.language)
+    if retriever is None or embedder is None:
+        return JSONResponse(status_code=404, content={"error": f"No such collection '{collection_name}'"})
+
+    pipeline_result = run_pipeline(
+        body.query_text,
+        embedder,
+        retriever,
+        off_topic_threshold=SETTINGS.off_topic_threshold,
+        groundedness_threshold=SETTINGS.groundedness_threshold,
+        top_k=SETTINGS.answer_top_k,
+        evidence_top_n=SETTINGS.evidence_top_n,
+    )
+
+    request_id = str(uuid.uuid4())
+    _PENDING_ANSWERS[request_id] = {"status": "resolving", "stage": "starting"}
+    while len(_PENDING_ANSWERS) > _MAX_PENDING_ANSWERS:
+        _PENDING_ANSWERS.popitem(last=False)
+    background_tasks.add_task(_run_recovery, request_id, body.query_text, pipeline_result)
+
+    fast_answer = None
+    if pipeline_result.answer is not None:
+        fast_answer = {
+            "text": pipeline_result.answer.text,
+            "source_passage_ids": [pipeline_result.answer.source_passage_id],
+        }
+
+    return {
+        "request_id": request_id,
+        "status": "resolving",
+        "fast_answer": fast_answer,
+        "pipeline": _serialize_pipeline(pipeline_result),
+    }
+
+
+@app.get("/api/answer/{request_id}", response_model=None)
+async def get_answer(request_id: str) -> JSONResponse | dict:
+    entry = _PENDING_ANSWERS.get(request_id)
+    if entry is None:
+        return JSONResponse(status_code=404, content={"error": f"No such request_id '{request_id}'"})
+    return entry
 
 
 @app.post("/api/transcribe", response_model=None)
@@ -164,10 +301,11 @@ class ReflectRequest(BaseModel):
 async def post_reflect(body: ReflectRequest) -> JSONResponse | dict:
     collection_name = f"{body.language}_{body.strategy}"
     retriever = _RETRIEVERS.get(collection_name)
-    if retriever is None:
+    embedder = _EMBEDDERS.get(body.language)
+    if retriever is None or embedder is None:
         return JSONResponse(status_code=404, content={"error": f"No such collection '{collection_name}'"})
 
-    query_vector = _EMBEDDER.embed_query(body.query_text)
+    query_vector = embedder.embed_query(body.query_text)
     retrieval = retriever.search(query_vector, k=1)
     source_text = retrieval.top.chunk.text if retrieval.top is not None else ""
 
@@ -176,6 +314,7 @@ async def post_reflect(body: ReflectRequest) -> JSONResponse | dict:
     reflect_ms = (time.perf_counter() - reflect_start) * 1000.0
 
     final_status, reason = combine_verdict(RagOutcome.ANSWERED, verdict)
+    fallback_triggered = final_status is not None and final_status.value != "answered"
 
     return {
         "grounded": verdict.grounded,
@@ -186,6 +325,8 @@ async def post_reflect(body: ReflectRequest) -> JSONResponse | dict:
         "reason": reason,
         "reasoning": verdict.reasoning,
         "reflect_latency_ms": reflect_ms,
+        "fallback_triggered": fallback_triggered,
+        "fallback_reason": reason if fallback_triggered else None,
     }
 
 
@@ -199,27 +340,36 @@ class RerankRequest(BaseModel):
 async def post_rerank(body: RerankRequest) -> JSONResponse | dict:
     collection_name = f"{body.language}_{body.strategy}"
     retriever = _RETRIEVERS.get(collection_name)
-    if retriever is None:
+    embedder = _EMBEDDERS.get(body.language)
+    if retriever is None or embedder is None:
         return JSONResponse(status_code=404, content={"error": f"No such collection '{collection_name}'"})
 
-    query_vector = _EMBEDDER.embed_query(body.query_text)
+    query_vector = embedder.embed_query(body.query_text)
     retrieval = retriever.search(query_vector, k=SETTINGS.answer_top_k)
     candidates = retrieval.scored_chunks
     if not candidates:
         return JSONResponse(status_code=404, content={"error": "no candidates retrieved for rerank"})
 
+    by_chunk_id = {c.chunk.chunk_id: c for c in candidates}
     rerank_start = time.perf_counter()
-    verdict = select_best_candidate_llm(body.query_text, [c.chunk.text for c in candidates])
+    verdict = rerank_passages_llm(
+        body.query_text, [RerankCandidate(source_id=c.chunk.chunk_id, text=c.chunk.text) for c in candidates]
+    )
     rerank_ms = (time.perf_counter() - rerank_start) * 1000.0
 
-    chosen = candidates[verdict.best_index]
-    span = select_answer_span(body.query_text, chosen.chunk.text)
+    selected_sources = [
+        {
+            "source_id": s.source_id,
+            "source_passage_id": by_chunk_id[s.source_id].chunk.source_passage_id,
+            "relevance_score": s.relevance_score,
+        }
+        for s in verdict.selected_sources
+        if s.source_id in by_chunk_id
+    ]
 
     return {
-        "text": span,
-        "answer_found": span is not None,
-        "source_passage_id": chosen.chunk.source_passage_id,
-        "retrieval_score": chosen.score,
+        "selected_sources": selected_sources,
+        "answerable": verdict.answerable,
         "reasoning": verdict.reasoning,
         "rerank_latency_ms": rerank_ms,
     }
@@ -235,10 +385,11 @@ class SynthesizeRequest(BaseModel):
 async def post_synthesize(body: SynthesizeRequest) -> JSONResponse | dict:
     collection_name = f"{body.language}_{body.strategy}"
     retriever = _RETRIEVERS.get(collection_name)
-    if retriever is None:
+    embedder = _EMBEDDERS.get(body.language)
+    if retriever is None or embedder is None:
         return JSONResponse(status_code=404, content={"error": f"No such collection '{collection_name}'"})
 
-    query_vector = _EMBEDDER.embed_query(body.query_text)
+    query_vector = embedder.embed_query(body.query_text)
     retrieval = retriever.search(query_vector, k=SETTINGS.answer_top_k)
     candidates = retrieval.scored_chunks
     if not candidates:

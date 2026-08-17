@@ -2,23 +2,20 @@ from qdrant_client import QdrantClient
 
 from scripts.run_recall_eval import run_comparison
 from speculative_rag.config import LanguageSource, Settings
+from speculative_rag.sparse_embedding import SparseVectorData
 
 
 class FakeEmbedder:
-    """Deterministic hash-based embedding — no model download needed."""
+    """Deterministic hash-based sparse embedding — no model download needed."""
 
-    dimension = 8
+    def _vec(self, text: str) -> SparseVectorData:
+        tokens = text.lower().split()
+        return SparseVectorData(indices=[hash(t) % 1000 for t in tokens], values=[1.0] * len(tokens))
 
-    def _vec(self, text: str) -> list[float]:
-        import hashlib
-
-        digest = hashlib.sha1(text.encode("utf-8")).digest()
-        return [b / 255.0 for b in digest[: self.dimension]]
-
-    def embed_query(self, text: str) -> list[float]:
+    def embed_query(self, text: str) -> SparseVectorData:
         return self._vec(text)
 
-    def embed_passages(self, texts: list[str]) -> list[list[float]]:
+    def embed_passages(self, texts: list[str]) -> list[SparseVectorData]:
         return [self._vec(t) for t in texts]
 
 
@@ -46,7 +43,7 @@ def test_run_comparison_produces_rows_for_every_strategy_and_k(tmp_path):
     settings = Settings(sample_size=10, qdrant_path=tmp_path / "qdrant")
     client = QdrantClient(path=str(settings.qdrant_path))
 
-    results = run_comparison(sources, FakeEmbedder(), client, settings)
+    results = run_comparison(sources, lambda language: FakeEmbedder(), client, settings)
 
     strategies = {r["strategy"] for r in results}
     assert strategies == {"native", "sliding_window", "sentence", "metadata"}

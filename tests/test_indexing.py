@@ -1,8 +1,9 @@
 import pytest
 from qdrant_client import QdrantClient
 
-from speculative_rag.indexing import ChunkIndex
+from speculative_rag.indexing import ChunkIndex, SparseChunkIndex
 from speculative_rag.schemas import Chunk
+from speculative_rag.sparse_embedding import SparseVectorData
 
 
 def _chunk(cid, text, source_passage_id):
@@ -46,3 +47,15 @@ def test_search_respects_k(tmp_path):
     results = index.search(query_vector=[2.0, 0.0, 0.0], k=3)
 
     assert len(results) == 3
+
+
+@pytest.mark.slow
+def test_sparse_chunk_index_recreates_collection_on_reinit(tmp_path):
+    client = QdrantClient(path=str(tmp_path / "qdrant"))
+    index = SparseChunkIndex(client, collection_name="test_sparse")
+    index.add([_chunk("c1", "near", "p1")], [SparseVectorData(indices=[1, 2], values=[1.0, 1.0])])
+    assert client.get_collection("test_sparse").points_count == 1
+
+    # Constructing again deletes and recreates -- same guarantee as ChunkIndex.
+    SparseChunkIndex(client, collection_name="test_sparse")
+    assert client.get_collection("test_sparse").points_count == 0

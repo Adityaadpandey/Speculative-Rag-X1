@@ -12,14 +12,12 @@ import sys
 import time
 from pathlib import Path
 
-from qdrant_client import QdrantClient
-
-from speculative_rag.config import BCP47_LANGUAGE_CODES, SETTINGS
-from speculative_rag.embedding import Embedder
+from speculative_rag.config import BCP47_LANGUAGE_CODES, SETTINGS, get_qdrant_client
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import RagOutcome
 from speculative_rag.reflect import check_groundedness_llm
 from speculative_rag.retrieval import Retriever
+from speculative_rag.sparse_embedding import SparseEmbedder
 from speculative_rag.stt import transcribe_audio
 
 
@@ -46,8 +44,8 @@ def main() -> None:
     print(f"stt latency (ms): {stt_ms:.2f}\n")
 
     print(f"Loading embedder and connecting to collection '{collection_name}'...")
-    embedder = Embedder()
-    client = QdrantClient(path=str(SETTINGS.qdrant_path))
+    embedder = SparseEmbedder(language)
+    client = get_qdrant_client()
     if not client.collection_exists(collection_name):
         available = [c.name for c in client.get_collections().collections]
         print(f"No such collection '{collection_name}'. Available: {available}")

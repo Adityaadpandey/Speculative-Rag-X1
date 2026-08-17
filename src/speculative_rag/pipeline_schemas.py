@@ -49,6 +49,14 @@ class PipelineResult(BaseModel):
     refusal_reason: str | None = None
     top_score: float | None = None
     timings: list[StageTiming] = Field(default_factory=list)
+    num_retrieved: int = 0
+    num_evidence_candidates: int = 0
+    # The full retrieved candidate pool (empty for UNSAFE_INPUT_REFUSED,
+    # which returns before it ever retrieves anything). Exposed so
+    # downstream recovery code (answer_orchestrator.resolve_answer) can
+    # reuse it for rerank, synthesis, and grounding-source lookup instead of
+    # paying for a second embed+retrieve round trip against the same query.
+    retrieved_chunks: list[ScoredChunk] = Field(default_factory=list)
 
     @property
     def total_ms(self) -> float:

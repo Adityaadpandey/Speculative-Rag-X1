@@ -1,14 +1,15 @@
-"""Hot-path RAG orchestrator (spec §5, scoped to this phase): explicit typed
-stages, per-stage timing, explicit typed refusal exits. No model calls in the
-timed path — embedding is a small local model, everything else is heuristic or
-extractive. Collaborators (embedder, retriever) are injected so the branching
-logic is unit-testable with fakes."""
+"""The hot-path RAG orchestrator: typed stages, per-stage timing, and typed
+refusal exits. Nothing here calls a model directly — "embedding" is just
+BM25 sparse term counting, not a neural model in-process, which is what
+lets the deployed webapp run on a free 512MB host. Everything past that is
+heuristic or extractive. The embedder and retriever are injected so we can
+unit test the branching with fakes instead of a real index."""
 
 import time
 from contextlib import contextmanager
 
 from speculative_rag.answer_type import expected_answer_type, span_satisfies_expected_type
-from speculative_rag.generation import select_answer_span
+from speculative_rag.generation import select_best_evidence
 from speculative_rag.guardrails import check_unsafe_input, groundedness_score, is_off_topic
 from speculative_rag.pipeline_schemas import Answer, PipelineResult, RagOutcome, StageTiming
 
@@ -35,6 +36,7 @@ def run_pipeline(
     off_topic_threshold: float,
     groundedness_threshold: float,
     top_k: int,
+    evidence_top_n: int = 5,
 ) -> PipelineResult:
     timer = _Timer()
 
@@ -55,6 +57,7 @@ def run_pipeline(
 
     top = retrieval.top
     top_score = retrieval.top_score
+    num_retrieved = len(retrieval.scored_chunks)
 
     with timer.stage("guardrail_offtopic"):
         off_topic = top is None or is_off_topic(top_score, off_topic_threshold)
@@ -66,22 +69,30 @@ def run_pipeline(
             ),
             top_score=top_score,
             timings=timer.timings,
+            num_retrieved=num_retrieved,
+            retrieved_chunks=retrieval.scored_chunks,
         )
 
+    evidence_candidates = retrieval.scored_chunks[:evidence_top_n]
     with timer.stage("generate"):
-        span = select_answer_span(query_text, top.chunk.text)
-    if span is None:
+        best = select_best_evidence(query_text, evidence_candidates)
+    if best is None:
         return PipelineResult(
             outcome=RagOutcome.INSUFFICIENT_EVIDENCE,
             refusal_reason=(
-                "no sentence in the retrieved passage shares vocabulary with the query text"
+                f"no sentence among the top {len(evidence_candidates)} retrieved passages "
+                "shares vocabulary with the query text"
             ),
             top_score=top_score,
             timings=timer.timings,
+            num_retrieved=num_retrieved,
+            num_evidence_candidates=len(evidence_candidates),
+            retrieved_chunks=retrieval.scored_chunks,
         )
+    chosen, span = best
 
     with timer.stage("guardrail_groundedness"):
-        ground = groundedness_score(span, top.chunk.text)
+        ground = groundedness_score(span, chosen.chunk.text)
     if ground < groundedness_threshold:
         return PipelineResult(
             outcome=RagOutcome.UNGROUNDED_REFUSED,
@@ -90,6 +101,9 @@ def run_pipeline(
             ),
             top_score=top_score,
             timings=timer.timings,
+            num_retrieved=num_retrieved,
+            num_evidence_candidates=len(evidence_candidates),
+            retrieved_chunks=retrieval.scored_chunks,
         )
 
     with timer.stage("guardrail_answer_type"):
@@ -103,13 +117,16 @@ def run_pipeline(
             ),
             top_score=top_score,
             timings=timer.timings,
+            num_retrieved=num_retrieved,
+            num_evidence_candidates=len(evidence_candidates),
+            retrieved_chunks=retrieval.scored_chunks,
         )
 
     answer = Answer(
         text=span,
-        source_passage_id=top.chunk.source_passage_id,
-        source_chunk_id=top.chunk.chunk_id,
-        retrieval_score=top_score,
+        source_passage_id=chosen.chunk.source_passage_id,
+        source_chunk_id=chosen.chunk.chunk_id,
+        retrieval_score=chosen.score,
         groundedness_score=ground,
     )
     return PipelineResult(
@@ -117,4 +134,7 @@ def run_pipeline(
         answer=answer,
         top_score=top_score,
         timings=timer.timings,
+        num_retrieved=num_retrieved,
+        num_evidence_candidates=len(evidence_candidates),
+        retrieved_chunks=retrieval.scored_chunks,
     )

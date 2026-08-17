@@ -34,7 +34,7 @@ def _scored(text, score, pid="p1"):
     )
 
 
-def _run(query, retriever, embedder=None, off_topic=0.75, ground=0.3, top_k=5):
+def _run(query, retriever, embedder=None, off_topic=1e-6, ground=0.3, top_k=5):
     return run_pipeline(
         query,
         embedder or FakeEmbedder(),
@@ -79,12 +79,14 @@ def test_unsafe_input_short_circuits_before_embedding():
 
 
 def test_off_topic_refusal_when_top_score_below_threshold():
-    retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("something unrelated", 0.40)]))
-    result = _run("what is a corporation", retriever, off_topic=0.75)
+    # Under BM25, score=0.0 (no shared vocabulary at all) is the only
+    # reliable off-topic signal -- see guardrails.is_off_topic.
+    retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("something unrelated", 0.0)]))
+    result = _run("what is a corporation", retriever, off_topic=1e-6)
 
     assert result.outcome == RagOutcome.OFF_TOPIC_REFUSED
     assert result.answer is None
-    assert result.top_score == 0.40
+    assert result.top_score == 0.0
     assert [t.stage for t in result.timings] == ["guardrail_unsafe", "embed", "retrieve", "guardrail_offtopic"]
 
 

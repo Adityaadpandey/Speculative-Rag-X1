@@ -1,7 +1,7 @@
 """Does the async LLM rerank (outside the 200ms latency budget) actually fix
 the rank-1 bottleneck that cheap lexical reranking made worse? Runs the same
 end-to-end answer-quality measurement as scripts/run_answer_quality_eval.py,
-but picks the answer source via speculative_rag.reflect.select_best_candidate_llm
+but picks the answer source via speculative_rag.reflect.rerank_passages_llm
 over the top-k candidates instead of trusting embedding rank 1 or word-overlap.
 
 Makes one real Anthropic API call per query, so this runs on a much smaller
@@ -18,15 +18,13 @@ import sys
 
 import pandas as pd
 
-from qdrant_client import QdrantClient
-
-from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS
+from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS, get_qdrant_client
 from speculative_rag.data import load_validation_sample, passage_id_for
-from speculative_rag.embedding import Embedder
 from speculative_rag.generation import select_answer_span
 from speculative_rag.latency import summarize
-from speculative_rag.reflect import select_best_candidate_llm
+from speculative_rag.reflect import RerankCandidate, rerank_passages_llm
 from speculative_rag.retrieval import Retriever
+from speculative_rag.sparse_embedding import SparseEmbedder
 from speculative_rag.text_utils import tokenize
 import time
 
@@ -55,8 +53,8 @@ def run_eval(language: str, strategy: str) -> None:
     collection_name = f"{language}_{strategy}"
 
     print(f"Loading embedder and connecting to collection '{collection_name}'...")
-    embedder = Embedder()
-    client = QdrantClient(path=str(SETTINGS.qdrant_path))
+    embedder = SparseEmbedder(language)
+    client = get_qdrant_client()
     if not client.collection_exists(collection_name):
         print(f"No such collection '{collection_name}'. Run scripts.run_recall_eval first.")
         return
@@ -74,7 +72,7 @@ def run_eval(language: str, strategy: str) -> None:
         relevant_texts = {texts[j] for j, sel in enumerate(selected) if sel == 1}
         relevant_ids = {passage_id_for(language, t) for t in relevant_texts}
 
-        query_text = row["query"] if source.text_field == "Translated_passages" else row["Eng_Query"]
+        query_text = row[source.query_field]
         gold_answer = row[gold_field]
 
         query_vector = embedder.embed_query(query_text)
@@ -84,14 +82,18 @@ def run_eval(language: str, strategy: str) -> None:
             continue
 
         rerank_start = time.perf_counter()
-        verdict = select_best_candidate_llm(query_text, [c.chunk.text for c in candidates])
+        verdict = rerank_passages_llm(
+            query_text, [RerankCandidate(source_id=c.chunk.chunk_id, text=c.chunk.text) for c in candidates]
+        )
         rerank_ms = (time.perf_counter() - rerank_start) * 1000.0
         rerank_latencies_ms.append(rerank_ms)
 
-        chosen = candidates[verdict.best_index]
-        answer_text = select_answer_span(query_text, chosen.chunk.text)
+        by_chunk_id = {c.chunk.chunk_id: c for c in candidates}
+        top_selection = max(verdict.selected_sources, key=lambda s: s.relevance_score, default=None)
+        chosen = by_chunk_id[top_selection.source_id] if top_selection is not None else None
+        answer_text = select_answer_span(query_text, chosen.chunk.text) if chosen is not None else None
         f1 = word_overlap_f1(answer_text, gold_answer) if answer_text is not None else 0.0
-        sourced_from_gold_passage = chosen.chunk.source_passage_id in relevant_ids
+        sourced_from_gold_passage = chosen is not None and chosen.chunk.source_passage_id in relevant_ids
 
         # baseline for the SAME query/candidate set, for a fair paired comparison
         baseline_chunk = candidates[0]

@@ -13,16 +13,14 @@ Usage: uv run python -m scripts.run_full_latency_eval
 import time
 from pathlib import Path
 
-from qdrant_client import QdrantClient
-
-from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS
+from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS, get_qdrant_client
 from speculative_rag.data import build_query_records, load_validation_sample
-from speculative_rag.embedding import Embedder
 from speculative_rag.latency import summarize
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import RagOutcome
 from speculative_rag.reflect import check_groundedness_llm
 from speculative_rag.retrieval import Retriever
+from speculative_rag.sparse_embedding import SparseEmbedder
 from speculative_rag.stt import transcribe_audio
 
 # Reused verbatim from results/latency_rag.md (200 validation queries,
@@ -54,7 +52,7 @@ def measure_reflect_only(sample_size: int, embedder, retriever) -> list[float]:
     # Over-sample: not every validation query reaches ANSWERED, and only
     # ANSWERED results have a groundedness check to time.
     df = load_validation_sample(source.parquet_path, sample_size * 2, SETTINGS.sample_seed)
-    records = build_query_records(df, source.language, source.text_field)
+    records = build_query_records(df, source.language, source.text_field, source.query_field)
 
     latencies: list[float] = []
     for record in records:
@@ -125,8 +123,8 @@ def main() -> None:
     language = SETTINGS.default_language
     strategy = SETTINGS.default_strategy
     collection_name = f"{language}_{strategy}"
-    embedder = Embedder()
-    client = QdrantClient(path=str(SETTINGS.qdrant_path))
+    embedder = SparseEmbedder(language)
+    client = get_qdrant_client()
     if not client.collection_exists(collection_name):
         available = [c.name for c in client.get_collections().collections]
         print(f"No such collection '{collection_name}'. Available: {available}")

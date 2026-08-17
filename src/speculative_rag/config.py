@@ -1,7 +1,9 @@
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from qdrant_client import QdrantClient
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -17,6 +19,7 @@ class LanguageSource(BaseModel):
     language: str
     parquet_path: Path
     text_field: str  # "Translated_passages" or "English_passages"
+    query_field: str = "query"  # "query" (native-language) or "Eng_Query"
 
 
 class Settings(BaseModel):
@@ -31,11 +34,24 @@ class Settings(BaseModel):
     sentence_overlap_sentences: int = 1
     top_k_values: list[int] = [1, 5, 10]
     # Hot-path pipeline settings.
-    off_topic_threshold: float = 0.75
+    # BM25 sparse scores are unbounded (no fixed max) and a positive score
+    # doesn't imply topical relevance -- see guardrails.is_off_topic. This is
+    # a near-zero floor ("shares at least one real term with the corpus"),
+    # not a relevance cutoff like the old dense-cosine 0.75 threshold was.
+    off_topic_threshold: float = 1e-6
     groundedness_threshold: float = 0.3
     default_language: str = "hi"
     default_strategy: str = "native"
-    answer_top_k: int = 5
+    # Retrieval pool width: how many BM25 candidates come back from Qdrant.
+    # Wider than the number actually used for extractive generation
+    # (evidence_top_n) so the hot-path evidence-selection stage and the LLM
+    # rerank/synthesis fallbacks all draw from the same, larger candidate set
+    # instead of only ever seeing embedding rank-1.
+    answer_top_k: int = 20
+    # How many of those retrieved candidates the hot-path extractive
+    # generator actually scores. Kept smaller than answer_top_k so the fast
+    # path stays cheap while the LLM fallbacks still get the wider pool.
+    evidence_top_n: int = 5
     latency_sample_size: int = 200
     # STT + async groundedness check settings.
     sarvam_stt_url: str = "https://api.sarvam.ai/speech-to-text"
@@ -61,6 +77,7 @@ LANGUAGE_SOURCES: list[LanguageSource] = [
         language="en",
         parquet_path=REPO_ROOT / "MSMARCO-XI" / "validation" / "hinval.parquet",
         text_field="English_passages",
+        query_field="Eng_Query",
     ),
     LanguageSource(
         language="ta",
@@ -70,3 +87,34 @@ LANGUAGE_SOURCES: list[LanguageSource] = [
 ]
 
 SETTINGS = Settings()
+
+
+def get_qdrant_client() -> QdrantClient:
+    """QDRANT_URL set (e.g. a Qdrant Cloud cluster) -> remote client, for the
+    deployed webapp and production ingestion. Unset -> local file-based
+    client at SETTINGS.qdrant_path, for local dev/eval scripts -- keeps
+    every existing script working unchanged with no env setup required.
+
+    The remote client gets an explicit, generous timeout: the qdrant-client
+    default is a few seconds, which a free-tier cloud cluster can't reliably
+    meet for a multi-thousand-point upsert with full sparse vectors + text
+    payloads (bulk ingestion into the eu-central-1 free tier was timing out
+    well under 60s otherwise). Cheap webapp search calls stay fast anyway --
+    a longer timeout only matters when a request is actually slow.
+
+    Deliberately not prefer_grpc=True: I tried it and measured it head-to-
+    head against this cluster (10 warm calls each) -- REST was a flat
+    ~175ms every time, gRPC alternated between ~175ms and ~350ms, adding a
+    recurring tail-latency spike (p95/p99) REST doesn't have. The slow
+    retrieve I was originally chasing turned out to be a one-off
+    cold-connection cost on the first request after process startup, not a
+    REST-vs-gRPC difference -- REST warm is already at this network's floor
+    against Qdrant Cloud."""
+    url = os.environ.get("QDRANT_URL")
+    if url:
+        return QdrantClient(
+            url=url,
+            api_key=os.environ.get("QDRANT_API_KEY"),
+            timeout=60,
+        )
+    return QdrantClient(path=str(SETTINGS.qdrant_path))

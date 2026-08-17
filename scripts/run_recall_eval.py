@@ -1,13 +1,14 @@
 from functools import partial
+from typing import Callable
 
 from qdrant_client import QdrantClient
 
 from speculative_rag.chunking import chunk_metadata_aware, chunk_native, chunk_sentence_aware, chunk_sliding_window
-from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS, LanguageSource, Settings
+from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS, LanguageSource, Settings, get_qdrant_client
 from speculative_rag.data import build_query_records, dedupe_passages, load_validation_sample
-from speculative_rag.embedding import Embedder
 from speculative_rag.eval import compute_recall_at_k, recall_hit
-from speculative_rag.indexing import ChunkIndex
+from speculative_rag.indexing import SparseChunkIndex
+from speculative_rag.sparse_embedding import SparseEmbedder
 
 # How many candidate chunks to fetch per query, as a multiple of the largest
 # requested k. Multi-chunk strategies can emit several chunks per passage, so
@@ -35,7 +36,7 @@ def _build_chunkers(settings: Settings):
 
 def run_comparison(
     language_sources: list[LanguageSource],
-    embedder,
+    embedder_factory: Callable[[str], object],
     qdrant_client: QdrantClient,
     settings: Settings,
 ) -> list[dict]:
@@ -45,15 +46,16 @@ def run_comparison(
 
     for source in language_sources:
         df = load_validation_sample(source.parquet_path, settings.sample_size, settings.sample_seed)
-        query_records = build_query_records(df, source.language, source.text_field)
+        query_records = build_query_records(df, source.language, source.text_field, source.query_field)
         passages = list(dedupe_passages(df, source.language, source.text_field).values())
+        embedder = embedder_factory(source.language)
 
         for strategy_name, chunker in chunkers.items():
             chunks = [c for passage in passages for c in chunker(passage)]
             vectors = embedder.embed_passages([c.text for c in chunks])
 
             collection_name = f"{source.language}_{strategy_name}"
-            index = ChunkIndex(qdrant_client, collection_name, vector_size=embedder.dimension)
+            index = SparseChunkIndex(qdrant_client, collection_name)
             index.add(chunks, vectors)
 
             hits_by_k: dict[int, list[bool]] = {k: [] for k in settings.top_k_values}
@@ -91,10 +93,9 @@ def render_markdown_table(results: list[dict]) -> str:
 
 
 def main() -> None:
-    embedder = Embedder()
-    qdrant_client = QdrantClient(path=str(SETTINGS.qdrant_path))
+    qdrant_client = get_qdrant_client()
 
-    results = run_comparison(LANGUAGE_SOURCES, embedder, qdrant_client, SETTINGS)
+    results = run_comparison(LANGUAGE_SOURCES, SparseEmbedder, qdrant_client, SETTINGS)
 
     SETTINGS.results_dir.mkdir(parents=True, exist_ok=True)
     output_path = SETTINGS.results_dir / "chunking_comparison.md"

@@ -39,59 +39,49 @@
     <section id="result-panel" hidden>
       <h2>Result</h2>
       <span id="outcome-badge" class="badge"></span>
+      <div id="resolving-note">
+        <span id="resolving-spinner" class="spinner" aria-hidden="true"></span>
+        fast answer shown below (&lt;200ms) — <span id="resolving-stage">validating and recovering in the background</span>...
+        <span id="resolving-elapsed" class="meta"></span>
+      </div>
       <div id="answer-block" hidden>
         <p id="answer-text"></p>
-        <p class="meta">
-          source: <span id="answer-source-id"></span> ·
-          retrieval score: <span id="answer-retrieval-score"></span> ·
-          groundedness: <span id="answer-groundedness-score"></span>
-        </p>
+        <p class="meta">sources: <span id="answer-source-ids"></span></p>
       </div>
       <p id="refusal-text" hidden></p>
+      <p class="meta" id="result-reason"></p>
       <table id="latency-table">
         <tbody></tbody>
       </table>
+      <p class="meta">async recovery latency (validation/rerank/regenerate/synthesis — not counted against the 200ms SLA): <span id="total-e2e-latency-ms"></span> ms</p>
     </section>
 
     <section id="review-panel" hidden>
-      <h2>Groundedness review</h2>
-      <p class="meta">final status: <strong id="review-final-status">pending…</strong> — <span id="review-final-reason"></span></p>
-      <div id="review-status">checking groundedness...</div>
-      <div id="review-result" hidden>
-        <span id="review-badge" class="badge"></span>
-        <p id="review-reasoning"></p>
-        <p class="meta">latency: <span id="review-latency-ms"></span> ms</p>
-      </div>
+      <h2>Initial answer validation</h2>
+      <p class="meta">
+        valid: <strong id="review-initial-valid"></strong> ·
+        answerable: <strong id="review-initial-answerable"></strong>
+      </p>
     </section>
 
     <section id="rerank-panel" hidden>
-      <h2>LLM rerank check</h2>
-      <p class="meta">Re-picks the best of the top-k candidates by semantic relevance instead of trusting embedding rank 1 — async, not counted against the 200ms SLA.</p>
-      <div id="rerank-status">reranking candidates...</div>
-      <div id="rerank-result" hidden>
-        <p id="rerank-text"></p>
-        <p class="meta">
-          source: <span id="rerank-source-id"></span> ·
-          retrieval score: <span id="rerank-retrieval-score"></span> ·
-          latency: <span id="rerank-latency-ms"></span> ms
-        </p>
-        <p id="rerank-reasoning"></p>
-      </div>
+      <h2>LLM rerank + regeneration</h2>
+      <p class="meta">Only runs when the initial answer fails validation — async, not counted against the 200ms SLA. The selected evidence below is what the final answer was regenerated from.</p>
+      <p class="meta">
+        latency: <span id="rerank-latency-ms"></span> ms ·
+        selected sources: <span id="rerank-selected-sources"></span>
+      </p>
+      <p class="meta">
+        answer regenerated: <span id="rerank-answer-generated"></span> ·
+        regenerated answer valid: <span id="rerank-regenerated-valid"></span> ·
+        regenerated answerable: <span id="rerank-regenerated-answerable"></span>
+      </p>
     </section>
 
     <section id="synthesis-panel" hidden>
       <h2>Multi-passage synthesis</h2>
-      <p class="meta">Async fallback when a single passage can't answer the query — synthesizes across the top-k candidates instead of guessing, or explicitly reports insufficient evidence.</p>
-      <div id="synthesis-status">checking multiple passages...</div>
-      <div id="synthesis-result" hidden>
-        <p id="synthesis-answer"></p>
-        <p class="meta">
-          answerable: <span id="synthesis-answerable"></span> ·
-          sources: <span id="synthesis-sources"></span> ·
-          latency: <span id="synthesis-latency-ms"></span> ms
-        </p>
-        <p id="synthesis-reasoning"></p>
-      </div>
+      <p class="meta">Deeper fallback used when regeneration from the reranked evidence still failed validation — synthesizes across the full candidate pool instead of guessing.</p>
+      <p id="synthesis-note" class="meta"></p>
     </section>
 
     <p id="error-banner" class="error" hidden></p>
