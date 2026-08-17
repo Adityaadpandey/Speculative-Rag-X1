@@ -11,10 +11,16 @@ from speculative_rag.reflect import (
 
 def test_reflect_verdict_model_shape():
     verdict = ReflectVerdict(
-        grounded=True, answers_query=True, reasoning="The answer restates the source directly."
+        grounded=True,
+        answers_query=True,
+        complete=True,
+        relevant=True,
+        reasoning="The answer restates the source directly.",
     )
     assert verdict.grounded is True
     assert verdict.answers_query is True
+    assert verdict.complete is True
+    assert verdict.relevant is True
     assert "restates" in verdict.reasoning
 
 
@@ -23,7 +29,11 @@ def test_check_groundedness_llm_calls_sdk_with_expected_shape(monkeypatch):
 
     class _FakeParsedMessage:
         parsed_output = ReflectVerdict(
-            grounded=False, answers_query=False, reasoning="Introduces an unsupported claim."
+            grounded=False,
+            answers_query=False,
+            complete=False,
+            relevant=True,
+            reasoning="Introduces an unsupported claim.",
         )
 
     class _FakeMessages:
@@ -44,6 +54,8 @@ def test_check_groundedness_llm_calls_sdk_with_expected_shape(monkeypatch):
     )
 
     assert verdict.grounded is False
+    assert verdict.complete is False
+    assert verdict.relevant is True
     assert captured["model"] == "claude-sonnet-5"
     assert captured["output_format"] is ReflectVerdict
     joined = " ".join(m["content"] for m in captured["messages"])
@@ -64,6 +76,8 @@ def test_check_groundedness_llm_real_call():
         pytest.skip(f"Anthropic API not configured: {exc}")
     assert isinstance(verdict.grounded, bool)
     assert isinstance(verdict.answers_query, bool)
+    assert isinstance(verdict.complete, bool)
+    assert isinstance(verdict.relevant, bool)
     assert verdict.reasoning
 
 

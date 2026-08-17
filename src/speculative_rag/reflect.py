@@ -12,7 +12,8 @@ import speculative_rag.config  # noqa: F401  # side effect: loads .env so ANTHRO
 _MODEL = "claude-sonnet-5"
 
 _PROMPT_TEMPLATE = """You are reviewing an answer produced for a user's query, checking it against \
-its source passage. Evaluate TWO separate questions independently — do not conflate them.
+its source passage. Evaluate FOUR separate questions independently — do not let one verdict influence \
+another. A verbatim, fully-supported excerpt from the source passage can still fail multiple of these.
 
 User query:
 {query_text}
@@ -23,23 +24,32 @@ Source passage:
 Answer:
 {answer_text}
 
-1. grounded: Is every claim in the answer supported by the source passage, with no claims \
-introduced that aren't present in the source passage?
+1. grounded (faithfulness): Is every claim in the answer supported by the source passage, with no \
+claims introduced that aren't present in the source passage?
 
-2. answers_query: Does the answer directly and specifically answer the user's query — stating \
-the specific fact, entity, date, number, or yes/no verdict the query is actually asking for? \
-A verbatim, fully-supported excerpt from the source passage that is merely on-topic but does \
-NOT state the specific thing the query asks for must be scored answers_query=false, even though \
-it may still be grounded=true. grounded and answers_query are independent verdicts: an answer \
-can be grounded but not answer the query, can answer the query but include an unsupported \
-claim, both, or neither.
+2. answers_query (answerability): Does the answer directly and specifically answer the user's query — \
+stating the specific fact, entity, date, number, or yes/no verdict the query is actually asking for? \
+A verbatim excerpt that is merely on-topic but does NOT state the specific thing the query asks for \
+must be scored answers_query=false, even though it may still be grounded=true.
 
-Give a brief one or two sentence reasoning covering both verdicts."""
+3. complete (completeness): Does the answer contain the important information required to fully \
+answer the query, or is it missing a necessary part of the answer?
+
+4. relevant (relevance): Is the answer focused on the query, rather than mostly consisting of \
+surrounding context, tangents, or information unrelated to what was asked?
+
+These four verdicts are independent: an answer can be grounded but not answer the query, can answer \
+the query but include an unsupported claim, can answer the query yet be incomplete, or any other \
+combination — including all pass or all fail.
+
+Give a brief one or two sentence reasoning covering all four verdicts."""
 
 
 class ReflectVerdict(BaseModel):
     grounded: bool
     answers_query: bool
+    complete: bool
+    relevant: bool
     reasoning: str
 
 
