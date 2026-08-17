@@ -39,3 +39,26 @@ def test_select_span_picks_only_relevant_sentence_among_many_irrelevant():
     )
     span = select_answer_span("what was the immediate impact of the test", passage)
     assert span == "The immediate impact of the test was a bright flash visible for miles."
+
+
+def test_select_span_prefers_type_matching_sentence_over_higher_overlap_topical_one():
+    # Regression case from results/answer_quality_en_native.md: a numeric
+    # query's top-overlap sentence merely discusses the topic without a
+    # number ("good credit"), while a lower-overlap sentence actually holds
+    # the number ("660"). Raw overlap alone picks the wrong one; the
+    # expected-answer-type filter should surface the numeric sentence.
+    passage = (
+        "You will need to have good credit and provide proof of income for the card. "
+        "A score of 660 or better is required."
+    )
+    span = select_answer_span("what credit score do you need for the card", passage)
+    assert span == "A score of 660 or better is required."
+
+
+def test_select_span_falls_back_to_overlap_when_no_candidate_satisfies_type():
+    # Numeric query, but no sentence in the passage contains a digit at all —
+    # the type filter must not eliminate every candidate; fall back to the
+    # plain overlap-ranked choice instead of returning None.
+    passage = "The card requires excellent credit. Approval also depends on your income."
+    span = select_answer_span("what credit score do you need for the card", passage)
+    assert span == "The card requires excellent credit."

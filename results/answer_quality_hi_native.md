@@ -2,15 +2,23 @@
 ## Outcome breakdown
 | outcome | count |
 |---|---|
-| answered | 300 |
+| answered | 297 |
+| insufficient_evidence | 3 |
 
 ## Answer quality (among ANSWERED queries)
 | metric | value |
 |---|---|
 | mean word-overlap F1 vs gold answer | 0.310 |
 | median word-overlap F1 vs gold answer | 0.222 |
-| % with zero word overlap vs gold answer | 13.3% |
+| % with zero word overlap vs gold answer | 13.5% |
 | % answer sourced from a gold-relevant passage | 32.7% |
+
+## Real answer status among ANSWERED rows (30-row LLM-verified sample — this is what 'answered' actually means)
+The pipeline's ANSWERED outcome only means a candidate extractive answer passed cheap heuristic gates — it is not a correctness verdict. This table applies the async four-dimension LLM judge (faithfulness/answerability/completeness/relevance) to a sample of those rows and reports what they actually resolve to.
+| final status | count | % of sample |
+|---|---|---|
+| not_answered | 18 | 60.0% |
+| answered | 12 | 40.0% |
 
 ## 10 lowest-F1 examples (for manual inspection)
 
@@ -19,29 +27,9 @@
 - pipeline answer: ए.एन.जेड.ए.सी.
 - f1=0.000  sourced_from_gold_passage=False
 
-**query** (NUMERIC): मार्टिन लूथर किंग की मृत्यु किस उम्र में हुई थी
-- gold answer: ५१
-- pipeline answer: मार्टिन लूथर किंग, जूनियर एक अमेरिकी पादरी और नागरिक अधिकार नेता थे जिन्हें 4 अप्रैल 1968 के गुरुवार को 39 वर्ष की आयु में टेनेसी के मेम्फिस में लोरेन मोटल में घातक रूप से गोली मार दी गई थी।
-- f1=0.000  sourced_from_gold_passage=False
-
-**query** (DESCRIPTION): परमाणु बम गिराने से कैसे जान बच गई?
-- gold answer: इससे युद्ध समाप्त हो गया।
-- pipeline answer: यह कहना असंभव है कि जापान के परमाणु बम विस्फोट से कितनी जानें बचाई गईं क्योंकि किसी को भी पता नहीं है कि अगर बम नहीं गिराए गए होते तो जापान कब आत्मसमर्पण कर लेता।
-- f1=0.000  sourced_from_gold_passage=False
-
 **query** (DESCRIPTION): क्या गैस प्रोग्राम है
 - gold answer: जॉर्जिया के राज्य ने शिक्षक प्रमाणन मूल्यांकन कार्यक्रम को मंजूरी दे दी।
 - pipeline answer: यदि गैस कैप समस्या का समाधान नहीं करता है, तो गैस में थोड़ा एस.ई.ए.एम.
-- f1=0.000  sourced_from_gold_passage=False
-
-**query** (NUMERIC): ग्लूकोज का मॉडल और कितने ए.टी.पी.
-- gold answer: 38
-- pipeline answer: ग्लाइकोलाइसिस में ग्लूकोज के प्रत्येक अणु के लिए कितने ए.टी.पी.
-- f1=0.000  sourced_from_gold_passage=False
-
-**query** (DESCRIPTION): सी-प्रतिक्रियाशील प्रोटीन का क्या अर्थ है
-- gold answer: शोथ का एक संवेदनशील चिह्नक।
-- pipeline answer: यह पृष्ठ सी-प्रतिक्रियाशील प्रोटीन शब्द के सभी संभावित अर्थ और अनुवाद प्रदान करता है।
 - f1=0.000  sourced_from_gold_passage=False
 
 **query** (DESCRIPTION): सेलेनियम की रासायनिक संपत्ति क्या है
@@ -62,4 +50,24 @@
 **query** (DESCRIPTION): क्या यह सच है कि समन का अर्थ है अदालत में पेश होने के लिए बुलाया जाना?
 - gold answer: सहमत हैं तो
 - pipeline answer: आम तौर पर आपको व्यक्तिगत रूप से या प्रमाणित या पंजीकृत मेल द्वारा न्यायालय में वैध होने के लिए समन प्राप्त होना चाहिए।
+- f1=0.000  sourced_from_gold_passage=False
+
+**query** (DESCRIPTION): एक्सपीडिया कार्ड के लिए आपको किस तरह का क्रेडिट स्कोर मंजूरी दी जानी चाहिए
+- gold answer: 660 या उससे बेहतर
+- pipeline answer: सिटी प्रीमियर पास/एक्सपीडिया कार्ड के लिए अनुमोदित होने के लिए, आपका क्रेडिट अच्छा होना चाहिए।
+- f1=0.000  sourced_from_gold_passage=True
+
+**query** (NUMERIC): ओक्लाहोमा में सबसे अधिक तापमान दर्ज किया गया तापमान क्या है
+- gold answer: 120 डिग्री फारेनहाइट
+- pipeline answer: ओक्लाहोमा में अब तक का सबसे ठंडा तापमान आज दर्ज किया गया।
+- f1=0.000  sourced_from_gold_passage=False
+
+**query** (DESCRIPTION): परिभाषा ज्यामिति
+- gold answer: अनुवाद एक ऐसा कार्य है जो एक निर्दिष्ट दिशा में हर बिंदु को एक निरंतर दूरी पर ले जाता है।
+- pipeline answer: ज्यामिति परिभाषा पाठ्यपुस्तक-पाठ-परिभाषा-निर्माण-प्रतिपाद्य-निष्कर्ष-इंटरनेट गतिविधियाँ और संसाधन।
+- f1=0.000  sourced_from_gold_passage=False
+
+**query** (LOCATION): टेलिको मैदान टेनेसी कहाँ है
+- gold answer: मोनरो काउंटी में।
+- pipeline answer: टेलिको प्लेन्स 35°22′0″N 84°17′56″W / 35.36667°N 84.29889°W / 35.36667; -84.29889 (35.366575, -84.298955) पर स्थित है।
 - f1=0.000  sourced_from_gold_passage=False
