@@ -17,9 +17,8 @@ Defaults to hi/native. Requires the collection to already exist
 (`uv run python -m scripts.run_recall_eval` builds it).
 """
 
+import os
 import sys
-
-import anthropic
 import pandas as pd
 from qdrant_client import QdrantClient
 
@@ -126,19 +125,16 @@ def run_eval(language: str, strategy: str) -> None:
 
     verify_n = min(SETTINGS.reflect_latency_sample_size, len(answered))
     status_counts: dict[str, int] = {}
-    if verify_n > 0:
+    if verify_n > 0 and not os.environ.get("ANTHROPIC_API_KEY"):
+        print("ANTHROPIC_API_KEY not set, skipping async LLM verification.")
+    elif verify_n > 0:
         print(f"Running async LLM verification on {verify_n} ANSWERED rows...")
         verify_sample = answered.sample(n=verify_n, random_state=SETTINGS.sample_seed)
         for _, r in verify_sample.iterrows():
             query_vector = embedder.embed_query(r["query"])
             top = retriever.search(query_vector, k=1).top
             source_text = top.chunk.text if top is not None else ""
-            try:
-                verdict = check_groundedness_llm(r["query"], r["answer"], source_text)
-            except anthropic.AnthropicError as exc:
-                print(f"Anthropic API not configured, skipping verification: {exc}")
-                status_counts = {}
-                break
+            verdict = check_groundedness_llm(r["query"], r["answer"], source_text)
             status, _ = combine_verdict(RagOutcome.ANSWERED, verdict)
             status_counts[status.value] = status_counts.get(status.value, 0) + 1
 
