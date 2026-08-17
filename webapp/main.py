@@ -17,11 +17,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from qdrant_client import QdrantClient
 
+from speculative_rag.answer_status import combine_verdict
 from speculative_rag.config import BCP47_LANGUAGE_CODES, LANGUAGE_SOURCES, SETTINGS
 from speculative_rag.embedding import Embedder
 from speculative_rag.generation import select_answer_span
 from speculative_rag.pipeline import run_pipeline
-from speculative_rag.reflect import check_groundedness_llm, select_best_candidate_llm
+from speculative_rag.pipeline_schemas import RagOutcome
+from speculative_rag.reflect import check_groundedness_llm, select_best_candidate_llm, synthesize_answer_llm
 from speculative_rag.retrieval import Retriever
 from speculative_rag.stt import SarvamAPIKeyMissingError, transcribe_audio
 
@@ -173,9 +175,15 @@ async def post_reflect(body: ReflectRequest) -> JSONResponse | dict:
     verdict = check_groundedness_llm(body.query_text, body.answer_text, source_text)
     reflect_ms = (time.perf_counter() - reflect_start) * 1000.0
 
+    final_status, reason = combine_verdict(RagOutcome.ANSWERED, verdict)
+
     return {
         "grounded": verdict.grounded,
         "answers_query": verdict.answers_query,
+        "complete": verdict.complete,
+        "relevant": verdict.relevant,
+        "final_status": final_status.value if final_status is not None else None,
+        "reason": reason,
         "reasoning": verdict.reasoning,
         "reflect_latency_ms": reflect_ms,
     }
@@ -214,4 +222,41 @@ async def post_rerank(body: RerankRequest) -> JSONResponse | dict:
         "retrieval_score": chosen.score,
         "reasoning": verdict.reasoning,
         "rerank_latency_ms": rerank_ms,
+    }
+
+
+class SynthesizeRequest(BaseModel):
+    query_text: str
+    language: str
+    strategy: str
+
+
+@app.post("/api/synthesize", response_model=None)
+async def post_synthesize(body: SynthesizeRequest) -> JSONResponse | dict:
+    collection_name = f"{body.language}_{body.strategy}"
+    retriever = _RETRIEVERS.get(collection_name)
+    if retriever is None:
+        return JSONResponse(status_code=404, content={"error": f"No such collection '{collection_name}'"})
+
+    query_vector = _EMBEDDER.embed_query(body.query_text)
+    retrieval = retriever.search(query_vector, k=SETTINGS.answer_top_k)
+    candidates = retrieval.scored_chunks
+    if not candidates:
+        return JSONResponse(status_code=404, content={"error": "no candidates retrieved for synthesis"})
+
+    synth_start = time.perf_counter()
+    verdict = synthesize_answer_llm(body.query_text, [c.chunk.text for c in candidates])
+    synth_ms = (time.perf_counter() - synth_start) * 1000.0
+
+    sources = [
+        {"source_passage_id": candidates[i].chunk.source_passage_id, "retrieval_score": candidates[i].score}
+        for i in verdict.source_indices
+    ]
+
+    return {
+        "answerable": verdict.answerable,
+        "answer_text": verdict.answer_text,
+        "sources": sources,
+        "reasoning": verdict.reasoning,
+        "synthesis_latency_ms": synth_ms,
     }
