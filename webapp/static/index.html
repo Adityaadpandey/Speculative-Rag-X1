@@ -55,6 +55,7 @@
 
     <section id="review-panel" hidden>
       <h2>Groundedness review</h2>
+      <p class="meta">final status: <strong id="review-final-status">pending…</strong> — <span id="review-final-reason"></span></p>
       <div id="review-status">checking groundedness...</div>
       <div id="review-result" hidden>
         <span id="review-badge" class="badge"></span>
@@ -75,6 +76,21 @@
           latency: <span id="rerank-latency-ms"></span> ms
         </p>
         <p id="rerank-reasoning"></p>
+      </div>
+    </section>
+
+    <section id="synthesis-panel" hidden>
+      <h2>Multi-passage synthesis</h2>
+      <p class="meta">Async fallback when a single passage can't answer the query — synthesizes across the top-k candidates instead of guessing, or explicitly reports insufficient evidence.</p>
+      <div id="synthesis-status">checking multiple passages...</div>
+      <div id="synthesis-result" hidden>
+        <p id="synthesis-answer"></p>
+        <p class="meta">
+          answerable: <span id="synthesis-answerable"></span> ·
+          sources: <span id="synthesis-sources"></span> ·
+          latency: <span id="synthesis-latency-ms"></span> ms
+        </p>
+        <p id="synthesis-reasoning"></p>
       </div>
     </section>
 

@@ -38,6 +38,16 @@ const rerankSourceId = document.getElementById("rerank-source-id");
 const rerankRetrievalScore = document.getElementById("rerank-retrieval-score");
 const rerankLatencyMs = document.getElementById("rerank-latency-ms");
 const rerankReasoning = document.getElementById("rerank-reasoning");
+const reviewFinalStatus = document.getElementById("review-final-status");
+const reviewFinalReason = document.getElementById("review-final-reason");
+const synthesisPanel = document.getElementById("synthesis-panel");
+const synthesisStatus = document.getElementById("synthesis-status");
+const synthesisResult = document.getElementById("synthesis-result");
+const synthesisAnswer = document.getElementById("synthesis-answer");
+const synthesisAnswerable = document.getElementById("synthesis-answerable");
+const synthesisSources = document.getElementById("synthesis-sources");
+const synthesisLatencyMs = document.getElementById("synthesis-latency-ms");
+const synthesisReasoning = document.getElementById("synthesis-reasoning");
 const errorBanner = document.getElementById("error-banner");
 
 const OUTCOME_LABELS = {
@@ -110,6 +120,9 @@ function resetPanels() {
   reviewStatus.hidden = false;
   rerankResult.hidden = true;
   rerankStatus.hidden = false;
+  synthesisPanel.hidden = true;
+  synthesisResult.hidden = true;
+  synthesisStatus.hidden = false;
   latencyTableBody.innerHTML = "";
 }
 
@@ -175,6 +188,11 @@ async function startReview(queryText, answerTextValue) {
     reviewBadge.className = `badge ${data.grounded ? "badge-grounded" : "badge-not-grounded"}`;
     reviewReasoning.textContent = data.reasoning;
     reviewLatencyMs.textContent = data.reflect_latency_ms.toFixed(2);
+    reviewFinalStatus.textContent = data.final_status ?? "pending";
+    reviewFinalReason.textContent = data.reason ?? "";
+    if (data.final_status && data.final_status !== "answered") {
+      startSynthesis(queryText);
+    }
   } catch (err) {
     reviewStatus.textContent = `review failed: ${err.message}`;
   }
@@ -218,6 +236,46 @@ async function startRerank(queryText) {
   }
 }
 
+async function startSynthesis(queryText) {
+  synthesisPanel.hidden = false;
+  synthesisStatus.hidden = false;
+  synthesisResult.hidden = true;
+
+  if (!state.anthropicKeyConfigured) {
+    synthesisStatus.textContent = "ANTHROPIC_API_KEY not set — skipping synthesis";
+    return;
+  }
+
+  synthesisStatus.textContent = "checking multiple passages...";
+  try {
+    const response = await fetch("/api/synthesize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query_text: queryText,
+        language: languageSelect.value,
+        strategy: strategySelect.value,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      synthesisStatus.textContent = `synthesis failed: ${data.error ?? "unknown error"}`;
+      return;
+    }
+    synthesisStatus.hidden = true;
+    synthesisResult.hidden = false;
+    synthesisAnswerable.textContent = data.answerable;
+    synthesisAnswer.textContent = data.answerable
+      ? data.answer_text
+      : "The retrieved evidence does not contain enough information to answer this fully.";
+    synthesisSources.textContent = data.sources.map((s) => s.source_passage_id).join(", ") || "none";
+    synthesisLatencyMs.textContent = data.synthesis_latency_ms.toFixed(2);
+    synthesisReasoning.textContent = data.reasoning;
+  } catch (err) {
+    synthesisStatus.textContent = `synthesis failed: ${err.message}`;
+  }
+}
+
 async function runQuery(queryText) {
   resetPanels();
   if (!queryText.trim()) {
@@ -249,6 +307,8 @@ async function runQuery(queryText) {
   if (data.outcome === "answered") {
     startReview(queryText, data.answer.text);
     startRerank(queryText);
+  } else if (data.outcome === "insufficient_evidence") {
+    startSynthesis(queryText);
   }
 }
 
