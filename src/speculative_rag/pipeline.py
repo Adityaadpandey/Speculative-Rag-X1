@@ -70,6 +70,15 @@ def run_pipeline(
 
     with timer.stage("generate"):
         span = select_answer_span(query_text, top.chunk.text)
+    if span is None:
+        return PipelineResult(
+            outcome=RagOutcome.INSUFFICIENT_EVIDENCE,
+            refusal_reason=(
+                "no sentence in the retrieved passage shares vocabulary with the query text"
+            ),
+            top_score=top_score,
+            timings=timer.timings,
+        )
 
     with timer.stage("guardrail_groundedness"):
         ground = groundedness_score(span, top.chunk.text)

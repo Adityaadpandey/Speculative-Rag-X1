@@ -146,6 +146,38 @@ def test_insufficient_evidence_when_extracted_span_lacks_expected_answer_type():
     ]
 
 
+def test_insufficient_evidence_when_no_sentence_overlaps_query_at_all():
+    # Mirrors the exact bug pattern from results/answer_quality_en_native.md:
+    # a topically-similar (high embedding score), on-topic passage that
+    # contains no sentence answering the query used to be returned WHOLE as
+    # if it were the answer. It must now short-circuit before generation
+    # ever produces a candidate "answer" to grade.
+    retriever = FakeRetriever(
+        RetrievalResult(
+            scored_chunks=[
+                _scored(
+                    "Manhattan Project scientists gathered at Los Alamos. "
+                    "They worked for several years on nuclear physics research.",
+                    0.85,
+                )
+            ]
+        )
+    )
+    result = _run("immediate impact of successful test", retriever)
+
+    assert result.outcome == RagOutcome.INSUFFICIENT_EVIDENCE
+    assert result.answer is None
+    assert result.refusal_reason is not None
+    assert "no sentence" in result.refusal_reason
+    assert [t.stage for t in result.timings] == [
+        "guardrail_unsafe",
+        "embed",
+        "retrieve",
+        "guardrail_offtopic",
+        "generate",
+    ]
+
+
 def test_total_ms_is_nonnegative_sum():
     retriever = FakeRetriever(RetrievalResult(scored_chunks=[_scored("A corporation is a company.", 0.9)]))
     result = _run("what is a corporation", retriever)
