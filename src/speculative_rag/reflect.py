@@ -124,3 +124,64 @@ def select_best_candidate_llm(query_text: str, candidate_texts: list[str]) -> Re
     if not (0 <= verdict.best_index < len(candidate_texts)):
         verdict.best_index = 0
     return verdict
+
+
+# Async multi-passage synthesis: when extractive top-1 selection fails
+# (select_answer_span returned None, or the async reflect verdict says the
+# top-1 answer is incomplete or doesn't answer the query), a single passage
+# might still not have the full answer even though the top-k collectively
+# does. This makes one more LLM call across up to k candidate passages,
+# asking it to synthesize -- not copy -- a concise answer only if the
+# evidence actually supports one, and to say so explicitly (never invent
+# from world knowledge) when it doesn't. Non-hot-path, same pattern as the
+# two functions above.
+_SYNTHESIS_PROMPT_TEMPLATE = """You are answering a user's question using ONLY the evidence in the \
+candidate passages below. Do not use outside knowledge.
+
+Question:
+{query_text}
+
+Candidate passages:
+{candidates_block}
+
+First decide: do these passages, taken together, contain enough information to answer the question?
+
+If yes: write a concise answer (one or two sentences) that states the specific fact the question asks \
+for. Synthesize from the relevant parts of the passages — do not copy an entire passage verbatim, and \
+do not include information irrelevant to the question. List the 0-based indices of the passages you \
+actually used.
+
+If no: do not guess or invent an answer from general knowledge. Set answerable=false, leave \
+answer_text empty, and briefly explain what information is missing."""
+
+
+class SynthesisVerdict(BaseModel):
+    answerable: bool
+    answer_text: str
+    source_indices: list[int]
+    reasoning: str
+
+
+def synthesize_answer_llm(query_text: str, candidate_texts: list[str]) -> SynthesisVerdict:
+    client = anthropic.Anthropic()
+    candidates_block = "\n".join(f"[{i}] {text}" for i, text in enumerate(candidate_texts))
+    response = client.messages.parse(
+        model=_MODEL,
+        max_tokens=1024,
+        messages=[
+            {
+                "role": "user",
+                "content": _SYNTHESIS_PROMPT_TEMPLATE.format(
+                    query_text=query_text, candidates_block=candidates_block
+                ),
+            }
+        ],
+        output_format=SynthesisVerdict,
+    )
+    verdict = response.parsed_output
+    assert verdict is not None
+    verdict.source_indices = [i for i in verdict.source_indices if 0 <= i < len(candidate_texts)]
+    if not verdict.answerable:
+        verdict.answer_text = ""
+        verdict.source_indices = []
+    return verdict
