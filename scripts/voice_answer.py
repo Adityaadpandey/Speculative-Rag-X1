@@ -87,9 +87,10 @@ def main() -> None:
         source_text = retrieval.top.chunk.text if retrieval.top is not None else ""
 
         reflect_start = time.perf_counter()
-        verdict = check_groundedness_llm(result.answer.text, source_text)
+        verdict = check_groundedness_llm(transcript, result.answer.text, source_text)
         reflect_ms = (time.perf_counter() - reflect_start) * 1000.0
         print(f"grounded: {verdict.grounded}")
+        print(f"answers_query: {verdict.answers_query}")
         print(f"reasoning: {verdict.reasoning}")
         print(f"async groundedness check latency (ms): {reflect_ms:.2f}")
 

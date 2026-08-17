@@ -62,6 +62,7 @@ def test_answered_path_returns_extractive_answer_and_all_stage_timings():
         "guardrail_offtopic",
         "generate",
         "guardrail_groundedness",
+        "guardrail_answer_type",
     ]
 
 
@@ -110,6 +111,38 @@ def test_ungrounded_refusal_when_groundedness_below_threshold():
         "guardrail_offtopic",
         "generate",
         "guardrail_groundedness",
+    ]
+
+
+def test_insufficient_evidence_when_extracted_span_lacks_expected_answer_type():
+    # "what year" expects a numeric answer type; the highest token-overlap
+    # sentence here ("second quarter") mentions no digit at all, mirroring
+    # the real "what year did facebook ipo" failure logged in
+    # results/answer_quality_en_native.md.
+    retriever = FakeRetriever(
+        RetrievalResult(
+            scored_chunks=[
+                _scored(
+                    "Facebook had its ipo in the second quarter. "
+                    "The company was founded by Mark Zuckerberg.",
+                    0.9,
+                )
+            ]
+        )
+    )
+    result = _run("what year did facebook ipo", retriever)
+
+    assert result.outcome == RagOutcome.INSUFFICIENT_EVIDENCE
+    assert result.answer is None
+    assert result.refusal_reason is not None
+    assert [t.stage for t in result.timings] == [
+        "guardrail_unsafe",
+        "embed",
+        "retrieve",
+        "guardrail_offtopic",
+        "generate",
+        "guardrail_groundedness",
+        "guardrail_answer_type",
     ]
 
 

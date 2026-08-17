@@ -76,7 +76,7 @@ def measure_reflect_only(sample_size: int, embedder, retriever) -> list[float]:
         source_text = retrieval.top.chunk.text if retrieval.top is not None else ""
 
         start = time.perf_counter()
-        check_groundedness_llm(result.answer.text, source_text)
+        check_groundedness_llm(record.query_text, result.answer.text, source_text)
         latencies.append((time.perf_counter() - start) * 1000.0)
     return latencies
 

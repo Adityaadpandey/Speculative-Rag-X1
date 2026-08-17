@@ -7,6 +7,7 @@ logic is unit-testable with fakes."""
 import time
 from contextlib import contextmanager
 
+from speculative_rag.answer_type import expected_answer_type, span_satisfies_expected_type
 from speculative_rag.generation import select_answer_span
 from speculative_rag.guardrails import check_unsafe_input, groundedness_score, is_off_topic
 from speculative_rag.pipeline_schemas import Answer, PipelineResult, RagOutcome, StageTiming
@@ -77,6 +78,19 @@ def run_pipeline(
             outcome=RagOutcome.UNGROUNDED_REFUSED,
             refusal_reason=(
                 f"groundedness {ground:.3f} below threshold {groundedness_threshold:.3f}"
+            ),
+            top_score=top_score,
+            timings=timer.timings,
+        )
+
+    with timer.stage("guardrail_answer_type"):
+        expected_type = expected_answer_type(query_text)
+        type_satisfied = span_satisfies_expected_type(expected_type, span)
+    if not type_satisfied:
+        return PipelineResult(
+            outcome=RagOutcome.INSUFFICIENT_EVIDENCE,
+            refusal_reason=(
+                f"extracted span does not contain the {expected_type} answer expected by the query"
             ),
             top_score=top_score,
             timings=timer.timings,

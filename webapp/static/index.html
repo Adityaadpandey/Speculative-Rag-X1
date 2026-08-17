@@ -63,6 +63,21 @@
       </div>
     </section>
 
+    <section id="rerank-panel" hidden>
+      <h2>LLM rerank check</h2>
+      <p class="meta">Re-picks the best of the top-k candidates by semantic relevance instead of trusting embedding rank 1 — async, not counted against the 200ms SLA.</p>
+      <div id="rerank-status">reranking candidates...</div>
+      <div id="rerank-result" hidden>
+        <p id="rerank-text"></p>
+        <p class="meta">
+          source: <span id="rerank-source-id"></span> ·
+          retrieval score: <span id="rerank-retrieval-score"></span> ·
+          latency: <span id="rerank-latency-ms"></span> ms
+        </p>
+        <p id="rerank-reasoning"></p>
+      </div>
+    </section>
+
     <p id="error-banner" class="error" hidden></p>
   </main>
 

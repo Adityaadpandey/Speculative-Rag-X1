@@ -1,8 +1,16 @@
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic import BaseModel
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Every entrypoint (serve_ui, answer, voice_answer, eval scripts) imports this
+# module first (directly or via SETTINGS), so loading it here guarantees
+# SARVAM_API_KEY/ANTHROPIC_API_KEY are in os.environ before anything reads
+# them, regardless of which script runs or what the cwd is. Already-exported
+# env vars still win (load_dotenv defaults to override=False).
+load_dotenv(REPO_ROOT / ".env")
 
 
 class LanguageSource(BaseModel):

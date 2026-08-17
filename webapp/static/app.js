@@ -30,6 +30,14 @@ const reviewResult = document.getElementById("review-result");
 const reviewBadge = document.getElementById("review-badge");
 const reviewReasoning = document.getElementById("review-reasoning");
 const reviewLatencyMs = document.getElementById("review-latency-ms");
+const rerankPanel = document.getElementById("rerank-panel");
+const rerankStatus = document.getElementById("rerank-status");
+const rerankResult = document.getElementById("rerank-result");
+const rerankText = document.getElementById("rerank-text");
+const rerankSourceId = document.getElementById("rerank-source-id");
+const rerankRetrievalScore = document.getElementById("rerank-retrieval-score");
+const rerankLatencyMs = document.getElementById("rerank-latency-ms");
+const rerankReasoning = document.getElementById("rerank-reasoning");
 const errorBanner = document.getElementById("error-banner");
 
 const OUTCOME_LABELS = {
@@ -95,10 +103,13 @@ function resetPanels() {
   clearError();
   resultPanel.hidden = true;
   reviewPanel.hidden = true;
+  rerankPanel.hidden = true;
   answerBlock.hidden = true;
   refusalText.hidden = true;
   reviewResult.hidden = true;
   reviewStatus.hidden = false;
+  rerankResult.hidden = true;
+  rerankStatus.hidden = false;
   latencyTableBody.innerHTML = "";
 }
 
@@ -169,6 +180,44 @@ async function startReview(queryText, answerTextValue) {
   }
 }
 
+async function startRerank(queryText) {
+  rerankPanel.hidden = false;
+  rerankStatus.hidden = false;
+  rerankResult.hidden = true;
+
+  if (!state.anthropicKeyConfigured) {
+    rerankStatus.textContent = "ANTHROPIC_API_KEY not set — skipping rerank check";
+    return;
+  }
+
+  rerankStatus.textContent = "reranking candidates...";
+  try {
+    const response = await fetch("/api/rerank", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query_text: queryText,
+        language: languageSelect.value,
+        strategy: strategySelect.value,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      rerankStatus.textContent = `rerank failed: ${data.error ?? "unknown error"}`;
+      return;
+    }
+    rerankStatus.hidden = true;
+    rerankResult.hidden = false;
+    rerankText.textContent = data.text;
+    rerankSourceId.textContent = data.source_passage_id;
+    rerankRetrievalScore.textContent = data.retrieval_score.toFixed(3);
+    rerankLatencyMs.textContent = data.rerank_latency_ms.toFixed(2);
+    rerankReasoning.textContent = data.reasoning;
+  } catch (err) {
+    rerankStatus.textContent = `rerank failed: ${err.message}`;
+  }
+}
+
 async function runQuery(queryText) {
   resetPanels();
   if (!queryText.trim()) {
@@ -199,6 +248,7 @@ async function runQuery(queryText) {
   renderResult(data);
   if (data.outcome === "answered") {
     startReview(queryText, data.answer.text);
+    startRerank(queryText);
   }
 }
 

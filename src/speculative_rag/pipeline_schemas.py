@@ -10,6 +10,7 @@ class RagOutcome(str, Enum):
     OFF_TOPIC_REFUSED = "off_topic_refused"
     UNSAFE_INPUT_REFUSED = "unsafe_input_refused"
     UNGROUNDED_REFUSED = "ungrounded_refused"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
 
 
 class ScoredChunk(BaseModel):

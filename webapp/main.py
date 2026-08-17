@@ -19,8 +19,9 @@ from qdrant_client import QdrantClient
 
 from speculative_rag.config import BCP47_LANGUAGE_CODES, LANGUAGE_SOURCES, SETTINGS
 from speculative_rag.embedding import Embedder
+from speculative_rag.generation import select_answer_span
 from speculative_rag.pipeline import run_pipeline
-from speculative_rag.reflect import check_groundedness_llm
+from speculative_rag.reflect import check_groundedness_llm, select_best_candidate_llm
 from speculative_rag.retrieval import Retriever
 from speculative_rag.stt import SarvamAPIKeyMissingError, transcribe_audio
 
@@ -169,11 +170,47 @@ async def post_reflect(body: ReflectRequest) -> JSONResponse | dict:
     source_text = retrieval.top.chunk.text if retrieval.top is not None else ""
 
     reflect_start = time.perf_counter()
-    verdict = check_groundedness_llm(body.answer_text, source_text)
+    verdict = check_groundedness_llm(body.query_text, body.answer_text, source_text)
     reflect_ms = (time.perf_counter() - reflect_start) * 1000.0
 
     return {
         "grounded": verdict.grounded,
+        "answers_query": verdict.answers_query,
         "reasoning": verdict.reasoning,
         "reflect_latency_ms": reflect_ms,
+    }
+
+
+class RerankRequest(BaseModel):
+    query_text: str
+    language: str
+    strategy: str
+
+
+@app.post("/api/rerank", response_model=None)
+async def post_rerank(body: RerankRequest) -> JSONResponse | dict:
+    collection_name = f"{body.language}_{body.strategy}"
+    retriever = _RETRIEVERS.get(collection_name)
+    if retriever is None:
+        return JSONResponse(status_code=404, content={"error": f"No such collection '{collection_name}'"})
+
+    query_vector = _EMBEDDER.embed_query(body.query_text)
+    retrieval = retriever.search(query_vector, k=SETTINGS.answer_top_k)
+    candidates = retrieval.scored_chunks
+    if not candidates:
+        return JSONResponse(status_code=404, content={"error": "no candidates retrieved for rerank"})
+
+    rerank_start = time.perf_counter()
+    verdict = select_best_candidate_llm(body.query_text, [c.chunk.text for c in candidates])
+    rerank_ms = (time.perf_counter() - rerank_start) * 1000.0
+
+    chosen = candidates[verdict.best_index]
+    span = select_answer_span(body.query_text, chosen.chunk.text)
+
+    return {
+        "text": span,
+        "source_passage_id": chosen.chunk.source_passage_id,
+        "retrieval_score": chosen.score,
+        "reasoning": verdict.reasoning,
+        "rerank_latency_ms": rerank_ms,
     }

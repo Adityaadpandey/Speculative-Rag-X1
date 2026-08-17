@@ -96,6 +96,7 @@ def test_post_query_returns_answered_shape(monkeypatch):
         "guardrail_offtopic",
         "generate",
         "guardrail_groundedness",
+        "guardrail_answer_type",
     ]
 
 
@@ -175,10 +176,11 @@ def test_post_reflect_returns_grounded_verdict_shape(monkeypatch):
 
     captured = {}
 
-    def fake_check_groundedness_llm(answer_text, source_text):
+    def fake_check_groundedness_llm(query_text, answer_text, source_text):
+        captured["query_text"] = query_text
         captured["answer_text"] = answer_text
         captured["source_text"] = source_text
-        return ReflectVerdict(grounded=True, reasoning="Matches the source directly.")
+        return ReflectVerdict(grounded=True, answers_query=True, reasoning="Matches the source directly.")
 
     monkeypatch.setattr(webapp_main, "check_groundedness_llm", fake_check_groundedness_llm)
 
@@ -194,8 +196,10 @@ def test_post_reflect_returns_grounded_verdict_shape(monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert data["grounded"] is True
+    assert data["answers_query"] is True
     assert data["reasoning"] == "Matches the source directly."
     assert data["reflect_latency_ms"] >= 0.0
+    assert captured["query_text"] == "what is a corporation"
     assert captured["answer_text"] == "A corporation is a company."
     assert captured["source_text"] == "A corporation is a company."
 
@@ -205,5 +209,55 @@ def test_post_reflect_unknown_collection_returns_404(monkeypatch):
     response = client.post(
         "/api/reflect",
         json={"query_text": "x", "language": "hi", "strategy": "native", "answer_text": "y"},
+    )
+    assert response.status_code == 404
+
+
+def test_post_rerank_picks_llm_chosen_candidate(monkeypatch):
+    from speculative_rag.reflect import RerankVerdict
+
+    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    retriever = FakeRetriever(
+        RetrievalResult(
+            scored_chunks=[
+                _scored("Cats are popular household pets.", 0.91, pid="p_rank1"),
+                _scored("A corporation is a company or group of people.", 0.80, pid="p_rank2"),
+            ]
+        )
+    )
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
+
+    captured = {}
+
+    def fake_select_best_candidate_llm(query_text, candidate_texts):
+        captured["query_text"] = query_text
+        captured["candidate_texts"] = candidate_texts
+        return RerankVerdict(best_index=1, reasoning="Candidate 1 defines a corporation.")
+
+    monkeypatch.setattr(webapp_main, "select_best_candidate_llm", fake_select_best_candidate_llm)
+
+    response = client.post(
+        "/api/rerank",
+        json={"query_text": "what is a corporation", "language": "hi", "strategy": "native"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["source_passage_id"] == "p_rank2"
+    assert "corporation" in data["text"]
+    assert data["retrieval_score"] == 0.80
+    assert data["reasoning"] == "Candidate 1 defines a corporation."
+    assert data["rerank_latency_ms"] >= 0.0
+    assert captured["query_text"] == "what is a corporation"
+    assert captured["candidate_texts"] == [
+        "Cats are popular household pets.",
+        "A corporation is a company or group of people.",
+    ]
+
+
+def test_post_rerank_unknown_collection_returns_404(monkeypatch):
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {})
+    response = client.post(
+        "/api/rerank",
+        json={"query_text": "x", "language": "hi", "strategy": "native"},
     )
     assert response.status_code == 404
