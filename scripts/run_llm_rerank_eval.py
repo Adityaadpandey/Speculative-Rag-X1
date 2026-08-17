@@ -90,13 +90,13 @@ def run_eval(language: str, strategy: str) -> None:
 
         chosen = candidates[verdict.best_index]
         answer_text = select_answer_span(query_text, chosen.chunk.text)
-        f1 = word_overlap_f1(answer_text, gold_answer)
+        f1 = word_overlap_f1(answer_text, gold_answer) if answer_text is not None else 0.0
         sourced_from_gold_passage = chosen.chunk.source_passage_id in relevant_ids
 
         # baseline for the SAME query/candidate set, for a fair paired comparison
         baseline_chunk = candidates[0]
         baseline_answer = select_answer_span(query_text, baseline_chunk.chunk.text)
-        baseline_f1 = word_overlap_f1(baseline_answer, gold_answer)
+        baseline_f1 = word_overlap_f1(baseline_answer, gold_answer) if baseline_answer is not None else 0.0
         baseline_sourced = baseline_chunk.chunk.source_passage_id in relevant_ids
 
         rows.append(
@@ -104,7 +104,7 @@ def run_eval(language: str, strategy: str) -> None:
                 "query_id": int(row["query_id"]),
                 "query": query_text,
                 "gold_answer": gold_answer,
-                "llm_answer": answer_text,
+                "llm_answer": answer_text if answer_text is not None else "(no answer-bearing sentence found)",
                 "llm_f1": f1,
                 "llm_sourced_from_gold_passage": sourced_from_gold_passage,
                 "baseline_f1": baseline_f1,

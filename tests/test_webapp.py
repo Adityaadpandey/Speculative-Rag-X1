@@ -244,6 +244,7 @@ def test_post_rerank_picks_llm_chosen_candidate(monkeypatch):
     data = response.json()
     assert data["source_passage_id"] == "p_rank2"
     assert "corporation" in data["text"]
+    assert data["answer_found"] is True
     assert data["retrieval_score"] == 0.80
     assert data["reasoning"] == "Candidate 1 defines a corporation."
     assert data["rerank_latency_ms"] >= 0.0
@@ -252,6 +253,44 @@ def test_post_rerank_picks_llm_chosen_candidate(monkeypatch):
         "Cats are popular household pets.",
         "A corporation is a company or group of people.",
     ]
+
+
+def test_post_rerank_no_answer_found_when_no_token_overlap(monkeypatch):
+    """Test that when select_answer_span returns None (no token overlap),
+    the response has text=None and answer_found=False."""
+    from speculative_rag.reflect import RerankVerdict
+
+    monkeypatch.setattr(webapp_main, "_EMBEDDER", FakeEmbedder())
+    retriever = FakeRetriever(
+        RetrievalResult(
+            scored_chunks=[
+                _scored("Cats are popular household pets.", 0.91, pid="p_rank1"),
+            ]
+        )
+    )
+    monkeypatch.setattr(webapp_main, "_RETRIEVERS", {"hi_native": retriever})
+
+    def fake_select_best_candidate_llm(query_text, candidate_texts):
+        return RerankVerdict(best_index=0, reasoning="Only candidate available.")
+
+    monkeypatch.setattr(webapp_main, "select_best_candidate_llm", fake_select_best_candidate_llm)
+
+    def fake_select_answer_span(query_text, passage_text):
+        # Simulate no token overlap: return None
+        return None
+
+    monkeypatch.setattr(webapp_main, "select_answer_span", fake_select_answer_span)
+
+    response = client.post(
+        "/api/rerank",
+        json={"query_text": "what is a corporation", "language": "hi", "strategy": "native"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["text"] is None
+    assert data["answer_found"] is False
+    assert data["source_passage_id"] == "p_rank1"
+    assert data["retrieval_score"] == 0.91
 
 
 def test_post_rerank_unknown_collection_returns_404(monkeypatch):

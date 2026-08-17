@@ -209,6 +209,7 @@ async def post_rerank(body: RerankRequest) -> JSONResponse | dict:
 
     return {
         "text": span,
+        "answer_found": span is not None,
         "source_passage_id": chosen.chunk.source_passage_id,
         "retrieval_score": chosen.score,
         "reasoning": verdict.reasoning,
