@@ -19,14 +19,17 @@ Defaults to hi/native. Requires the collection to already exist
 
 import sys
 
+import anthropic
 import pandas as pd
 from qdrant_client import QdrantClient
 
+from speculative_rag.answer_status import combine_verdict
 from speculative_rag.config import LANGUAGE_SOURCES, SETTINGS
 from speculative_rag.data import load_validation_sample
 from speculative_rag.embedding import Embedder
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import RagOutcome
+from speculative_rag.reflect import check_groundedness_llm
 from speculative_rag.retrieval import Retriever
 from speculative_rag.text_utils import tokenize
 
@@ -121,6 +124,24 @@ def run_eval(language: str, strategy: str) -> None:
     report_df = pd.DataFrame(rows)
     answered = report_df[report_df["outcome"] == "answered"]
 
+    verify_n = min(SETTINGS.reflect_latency_sample_size, len(answered))
+    status_counts: dict[str, int] = {}
+    if verify_n > 0:
+        print(f"Running async LLM verification on {verify_n} ANSWERED rows...")
+        verify_sample = answered.sample(n=verify_n, random_state=SETTINGS.sample_seed)
+        for _, r in verify_sample.iterrows():
+            query_vector = embedder.embed_query(r["query"])
+            top = retriever.search(query_vector, k=1).top
+            source_text = top.chunk.text if top is not None else ""
+            try:
+                verdict = check_groundedness_llm(r["query"], r["answer"], source_text)
+            except anthropic.AnthropicError as exc:
+                print(f"Anthropic API not configured, skipping verification: {exc}")
+                status_counts = {}
+                break
+            status, _ = combine_verdict(RagOutcome.ANSWERED, verdict)
+            status_counts[status.value] = status_counts.get(status.value, 0) + 1
+
     lines = [f"# Answer-quality eval — {collection_name}, {len(report_df)} validation queries\n"]
     lines.append("## Outcome breakdown\n")
     lines.append("| outcome | count |\n|---|---|\n")
@@ -138,6 +159,21 @@ def run_eval(language: str, strategy: str) -> None:
         lines.append(f"| median word-overlap F1 vs gold answer | {median_f1:.3f} |\n")
         lines.append(f"| % with zero word overlap vs gold answer | {pct_f1_zero:.1f}% |\n")
         lines.append(f"| % answer sourced from a gold-relevant passage | {pct_sourced:.1f}% |\n")
+
+        if status_counts:
+            lines.append(
+                f"\n## Real answer status among ANSWERED rows "
+                f"({verify_n}-row LLM-verified sample — this is what 'answered' actually means)\n"
+            )
+            lines.append(
+                "The pipeline's ANSWERED outcome only means a candidate extractive answer passed cheap "
+                "heuristic gates — it is not a correctness verdict. This table applies the async four-"
+                "dimension LLM judge (faithfulness/answerability/completeness/relevance) to a sample of "
+                "those rows and reports what they actually resolve to.\n"
+            )
+            lines.append("| final status | count | % of sample |\n|---|---|---|\n")
+            for status, count in sorted(status_counts.items(), key=lambda kv: -kv[1]):
+                lines.append(f"| {status} | {count} | {count / verify_n * 100:.1f}% |\n")
 
         worst = answered.sort_values("f1").head(10)
         lines.append("\n## 10 lowest-F1 examples (for manual inspection)\n")
