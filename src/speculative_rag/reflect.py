@@ -57,7 +57,7 @@ def check_groundedness_llm(query_text: str, answer_text: str, source_text: str) 
     client = anthropic.Anthropic()
     response = client.messages.parse(
         model=_MODEL,
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[
             {
                 "role": "user",
@@ -108,7 +108,7 @@ def select_best_candidate_llm(query_text: str, candidate_texts: list[str]) -> Re
     candidates_block = "\n".join(f"[{i}] {text}" for i, text in enumerate(candidate_texts))
     response = client.messages.parse(
         model=_MODEL,
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[
             {
                 "role": "user",
@@ -167,7 +167,7 @@ def synthesize_answer_llm(query_text: str, candidate_texts: list[str]) -> Synthe
     candidates_block = "\n".join(f"[{i}] {text}" for i, text in enumerate(candidate_texts))
     response = client.messages.parse(
         model=_MODEL,
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[
             {
                 "role": "user",
