@@ -2,10 +2,124 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Speculative RAG</title>
 </head>
 <body>
-  <p>vite scaffold ok</p>
+  <div id="gradient-mesh" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <div id="toast-container" aria-live="polite"></div>
+
+  <header id="hero">
+    <div class="hero-inner">
+      <h1 class="hero-title">Speculative RAG</h1>
+      <p class="hero-subtitle">Sub-200ms extractive answers, verified and self-corrected by Claude in the background.</p>
+
+      <div class="hero-controls">
+        <label class="field"><span>Language</span><select data-role="language-select"></select></label>
+        <label class="field"><span>Strategy</span><select data-role="strategy-select"></select></label>
+      </div>
+
+      <div class="hero-query-row glass-panel">
+        <input type="text" data-role="query-input" placeholder="Ask a question..." />
+        <button class="ask-btn" data-role="ask-btn">
+          <span class="ask-btn-label">Ask</span>
+          <span class="ask-btn-spinner" hidden></span>
+        </button>
+      </div>
+
+      <div class="hero-audio-row">
+        <label class="audio-file-label">
+          <input type="file" data-role="audio-file" accept="audio/*" />
+          Upload audio
+        </label>
+        <button class="secondary" data-role="record-btn">Record</button>
+        <div class="waveform" data-role="waveform" hidden></div>
+        <span class="record-countdown" data-role="record-countdown"></span>
+        <p class="audio-disabled-note" data-role="audio-disabled-note" hidden>SARVAM_API_KEY not set — text queries only</p>
+      </div>
+    </div>
+  </header>
+
+  <div id="compact-bar" class="glass-panel" hidden>
+    <span class="compact-logo">Speculative RAG</span>
+    <select data-role="language-select"></select>
+    <select data-role="strategy-select"></select>
+    <input type="text" data-role="query-input" placeholder="Ask a follow-up..." />
+    <button class="ask-btn" data-role="ask-btn">
+      <span class="ask-btn-label">Ask</span>
+      <span class="ask-btn-spinner" hidden></span>
+    </button>
+  </div>
+
+  <main id="result-view" hidden>
+    <section class="answer-card glass-panel" data-role="answer-card">
+      <span class="badge" data-role="outcome-badge" hidden></span>
+      <div class="answer-skeleton" data-role="answer-skeleton">
+        <div class="skeleton-line w-90"></div>
+        <div class="skeleton-line w-70"></div>
+        <div class="skeleton-line w-40"></div>
+      </div>
+      <p class="answer-text" data-role="answer-text" hidden></p>
+      <p class="refusal-text" data-role="refusal-text" hidden></p>
+      <p class="meta answer-sources-row" data-role="answer-sources-row" hidden>sources: <span data-role="answer-source-ids"></span></p>
+      <p class="meta result-reason" data-role="result-reason"></p>
+    </section>
+
+    <section class="timeline glass-panel" data-role="timeline" style="padding: 1.1rem 1.4rem;">
+      <div class="timeline-step" data-step="fast">
+        <span class="step-icon-wrap">
+          <svg viewBox="0 0 36 36"><circle class="ring-track" cx="18" cy="18" r="16"/><circle class="ring-progress" cx="18" cy="18" r="16"/><path class="ring-check" d="M10 18l5 5 11-11"/></svg>
+        </span>
+        <div class="step-body">
+          <div class="step-title">Fast answer retrieved <span class="engine-tag engine-local">no LLM</span></div>
+          <div class="step-detail" data-role="step-detail"></div>
+        </div>
+        <span class="step-time" data-role="step-time"></span>
+      </div>
+      <div class="timeline-step" data-step="verify">
+        <span class="step-icon-wrap">
+          <svg viewBox="0 0 36 36"><circle class="ring-track" cx="18" cy="18" r="16"/><circle class="ring-progress" cx="18" cy="18" r="16"/><path class="ring-check" d="M10 18l5 5 11-11"/></svg>
+        </span>
+        <div class="step-body">
+          <div class="step-title">Verifying accuracy <span class="engine-tag engine-claude">Claude Haiku</span></div>
+          <div class="step-detail" data-role="step-detail"></div>
+        </div>
+        <span class="step-time" data-role="step-time"></span>
+      </div>
+      <div class="timeline-step" data-step="rerank" hidden>
+        <span class="step-icon-wrap">
+          <svg viewBox="0 0 36 36"><circle class="ring-track" cx="18" cy="18" r="16"/><circle class="ring-progress" cx="18" cy="18" r="16"/><path class="ring-check" d="M10 18l5 5 11-11"/></svg>
+        </span>
+        <div class="step-body">
+          <div class="step-title">Re-ranking evidence &amp; regenerating <span class="engine-tag engine-claude">Claude Haiku</span></div>
+          <div class="step-detail" data-role="step-detail"></div>
+        </div>
+        <span class="step-time" data-role="step-time"></span>
+      </div>
+      <div class="timeline-step" data-step="synthesis" hidden>
+        <span class="step-icon-wrap">
+          <svg viewBox="0 0 36 36"><circle class="ring-track" cx="18" cy="18" r="16"/><circle class="ring-progress" cx="18" cy="18" r="16"/><path class="ring-check" d="M10 18l5 5 11-11"/></svg>
+        </span>
+        <div class="step-body">
+          <div class="step-title">Synthesizing across passages <span class="engine-tag engine-claude">Claude Haiku</span></div>
+          <div class="step-detail" data-role="step-detail"></div>
+        </div>
+        <span class="step-time" data-role="step-time"></span>
+      </div>
+    </section>
+
+    <details class="details-disclosure glass-panel" data-role="details-disclosure" style="padding: 0.9rem 1.4rem;">
+      <summary>Full pipeline breakdown</summary>
+      <table class="latency-table"><tbody data-role="latency-table-body"></tbody></table>
+      <p class="meta">verification latency (runs async, after the fast answer is already shown — never counted against the 200ms SLA): <span data-role="total-e2e-latency-ms"></span> ms</p>
+    </details>
+  </main>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

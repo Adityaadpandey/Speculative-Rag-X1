@@ -1,1 +1,4 @@
-console.log("vite scaffold ok");
+import "./styles/tokens.css";
+import "./styles/main.css";
+
+console.log("markup + styles loaded");
