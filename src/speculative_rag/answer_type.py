@@ -42,6 +42,26 @@ _NUMERIC_START_WORDS = ("when", "कब", "எப்போது")
 # (?=\s|$) sidesteps that by checking literally for whitespace-or-end
 # instead of a \w/\W transition.
 _PERSON_PATTERN = re.compile(r"^(who|कौन|யார்)(?=\s|$)")
+# Same trailing-combining-mark caveat as _PERSON_PATTERN above -- "எங்கே"
+# ends in a dependent vowel sign, so (?=\s|$) is used instead of \b there too.
+_LOCATION_PATTERN = re.compile(r"^(where|कहाँ|எங்கே)(?=\s|$)")
+
+# A cheap lexical proxy for "this span actually places something somewhere,"
+# not real geo-NER. Deliberately excludes bare nouns like "state" or "area"
+# -- those show up constantly in sentences that have nothing to do with
+# location (e.g. "the smallest state by population"), so they'd make this
+# check pass for almost anything and defeat the point of gating on it.
+_LOCATION_MARKER_WORDS = {
+    "located", "situated", "border", "bordered", "borders", "bordering",
+    "coast", "coastal", "island", "continent", "peninsula", "region",
+    "province", "territory", "northwest", "northeast", "southwest", "southeast",
+    "north", "south", "east", "west",
+    # Hindi
+    "स्थित", "सीमा", "तट", "द्वीप", "महाद्वीप", "क्षेत्र", "उत्तर", "दक्षिण", "पूर्व", "पश्चिम",
+    # Tamil
+    "அமைந்துள்ளது", "எல்லை", "கடற்கரை", "தீவு", "கண்டம்", "பகுதி", "வடக்கு", "தெற்கு", "கிழக்கு", "மேற்கு",
+}
+_LOCATION_PHRASE_MARKERS = ("in the", "on the", "near", "capital of")
 
 
 def expected_answer_type(query_text: str) -> str | None:
@@ -57,6 +77,8 @@ def expected_answer_type(query_text: str) -> str | None:
         return "numeric"
     if _PERSON_PATTERN.match(query):
         return "person"
+    if _LOCATION_PATTERN.match(query):
+        return "location"
     return None
 
 
@@ -85,4 +107,9 @@ def span_satisfies_expected_type(expected_type: str | None, span_text: str) -> b
         if not latin_words:
             return True
         return any(word[0].isupper() for word in latin_words)
+    if expected_type == "location":
+        if tokenize(span_text) & _LOCATION_MARKER_WORDS:
+            return True
+        lowered = span_text.lower()
+        return any(phrase in lowered for phrase in _LOCATION_PHRASE_MARKERS)
     return True

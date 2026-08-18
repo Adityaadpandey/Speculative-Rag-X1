@@ -21,6 +21,10 @@ def test_expected_answer_type_person():
     assert expected_answer_type("who is the president of the united states") == "person"
 
 
+def test_expected_answer_type_location():
+    assert expected_answer_type("where is goa") == "location"
+
+
 def test_expected_answer_type_unclassified_description_query():
     assert expected_answer_type("kids definition of multiples") is None
 
@@ -63,6 +67,22 @@ def test_expected_answer_type_numeric_tamil_edai():
 
 def test_expected_answer_type_person_tamil_yaar():
     assert expected_answer_type("யார் இந்தியாவின் பிரதமர்") == "person"
+
+
+def test_expected_answer_type_location_hindi_kahan_mid_query_unclassified():
+    # The location pattern only checks the query's leading word, matching
+    # the same sentence-initial convention _YESNO_PATTERN and _PERSON_PATTERN
+    # already use -- "kahan" showing up mid-sentence isn't a strong enough
+    # signal on its own to classify against.
+    assert expected_answer_type("गोवा कहाँ है") is None
+
+
+def test_expected_answer_type_location_hindi_kahan_initial():
+    assert expected_answer_type("कहाँ है गोवा") == "location"
+
+
+def test_expected_answer_type_location_tamil_enge():
+    assert expected_answer_type("எங்கே கோவா") == "location"
 
 
 def test_expected_answer_type_hindi_kya_not_forced_yesno():
@@ -109,3 +129,19 @@ def test_span_satisfies_expected_type_person_hindi_span_not_blocked():
     # Devanagari has no letter-casing, so the capitalization heuristic can't
     # verify this — it must not treat that as a negative signal.
     assert span_satisfies_expected_type("person", "प्रधानमंत्री नरेंद्र मोदी हैं।") is True
+
+
+def test_span_satisfies_expected_type_location_positive():
+    assert span_satisfies_expected_type("location", "Goa is located on the west coast of India.") is True
+
+
+def test_span_satisfies_expected_type_location_positive_phrase_marker():
+    assert span_satisfies_expected_type("location", "Goa is a state in the south of India.") is True
+
+
+def test_span_satisfies_expected_type_location_negative():
+    # This is the real query/passage pair the location type was added to
+    # catch: topically on-target (mentions Goa, mentions a place-like noun)
+    # but never actually says where Goa is.
+    text = "If you consider Delhi as a state, it is the smallest state, otherwise Goa is the smallest state."
+    assert span_satisfies_expected_type("location", text) is False
