@@ -20,3 +20,6 @@ results/qdrant_local/
 
 # Local secrets (SARVAM_API_KEY, ANTHROPIC_API_KEY) — never commit
 .env
+
+# macOS
+.DS_Store
