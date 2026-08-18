@@ -8,12 +8,16 @@ term-frequency vectors.
 Checked against the dense baseline on the existing recall eval before
 switching over: ties or beats it for English (recall@1 0.327 vs 0.337,
 recall@10 0.957 vs 0.867) but is a real regression for Hindi (recall@1
-~0.14 vs 0.327) since fastembed ships no Hindi stemmer. Accepted that as a
-known tradeoff rather than something worth chasing further."""
+~0.14 vs 0.327) since fastembed ships no Hindi stemmer. A conservative
+rule-based light stemmer (hindi_stemmer.py) runs ahead of the embedder for
+Hindi text only, applied identically at index and query time, to recover
+some of that gap without pulling in a model."""
 
 from dataclasses import dataclass
 
 from fastembed import SparseTextEmbedding
+
+from speculative_rag.hindi_stemmer import stem_hindi_text
 
 # fastembed.sparse.bm25.supported_languages only covers a fixed Snowball
 # stemmer list, and Hindi isn't on it. disable_stemmer=True skips stemming
@@ -39,9 +43,13 @@ class SparseEmbedder:
             disable_stemmer=stemmer_language is None,
         )
 
+    def _preprocess(self, text: str) -> str:
+        return stem_hindi_text(text) if self.language == "hi" else text
+
     def embed_passages(self, texts: list[str]) -> list[SparseVectorData]:
+        texts = [self._preprocess(t) for t in texts]
         return [SparseVectorData(v.indices.tolist(), v.values.tolist()) for v in self._model.embed(texts)]
 
     def embed_query(self, text: str) -> SparseVectorData:
-        vector = next(iter(self._model.query_embed([text])))
+        vector = next(iter(self._model.query_embed([self._preprocess(text)])))
         return SparseVectorData(vector.indices.tolist(), vector.values.tolist())
