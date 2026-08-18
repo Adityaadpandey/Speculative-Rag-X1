@@ -1,3 +1,15 @@
+# Frontend build stage
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /app/webapp/frontend
+
+COPY webapp/frontend/package*.json ./
+RUN npm ci
+
+COPY webapp/frontend ./
+RUN npm run build
+
+# Python application stage
 FROM python:3.13-slim
 
 # uv installs into /root/.local/bin; copying the static binary avoids a
@@ -15,6 +27,9 @@ RUN uv sync --frozen --no-install-project --no-dev
 COPY src ./src
 COPY webapp ./webapp
 COPY README.md ./
+
+# Copy built frontend from builder stage
+COPY --from=frontend-builder /app/webapp/frontend/dist ./webapp/static
 
 RUN uv sync --frozen --no-dev
 

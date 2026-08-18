@@ -20,3 +20,6 @@ tests/
 
 # Local-only Qdrant storage -- production points at QDRANT_URL instead
 results/
+
+# Frontend node_modules -- only needed at build time, not at runtime
+webapp/frontend/node_modules
