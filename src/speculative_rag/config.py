@@ -53,6 +53,17 @@ class Settings(BaseModel):
     # path stays cheap while the LLM fallbacks still get the wider pool.
     evidence_top_n: int = 5
     latency_sample_size: int = 200
+    # Non-LLM prefilter ahead of the async rerank+regenerate LLM call (see
+    # answer_orchestrator.resolve_recovery). Ships disabled: a prior cheap
+    # lexical-reranking attempt made recall WORSE, not better (see
+    # reflect.py's rerank_passages_llm docstring), so this only flips to True
+    # once scripts/run_prefilter_recall_eval.py's offline pass shows zero
+    # gold-passage exclusions and the paired LLM eval shows no F1/recall
+    # regression -- see the prefilter/eval sections of
+    # docs/superpowers/specs/2026-08-18-extraction-quality-and-prefilter-design.md.
+    rerank_prefilter_enabled: bool = False
+    rerank_prefilter_lexical_top_n: int = 8
+    rerank_prefilter_retrieval_reserve: int = 5
     # STT + async groundedness check settings.
     sarvam_stt_url: str = "https://api.sarvam.ai/speech-to-text"
     sarvam_default_language_code: str = "hi-IN"

@@ -133,6 +133,7 @@ def test_case1_manhattan_project_recovers_via_rerank_and_regeneration():
     assert outcome.regenerated_answer_valid is True
     assert outcome.synthesis_triggered is False
     assert synthesize.calls == []
+    assert outcome.answer_engine == "claude_regenerated"
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +165,7 @@ def test_case2_easy_question_takes_fast_path_only():
     assert outcome.rerank_triggered is False
     assert outcome.synthesis_triggered is False
     assert rerank_and_generate.calls == [] and synthesize.calls == []
+    assert outcome.answer_engine == "extractive"
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +202,7 @@ def test_case3_unrelated_passages_yield_insufficient_evidence_not_a_fabrication(
     assert outcome.rerank_triggered is True
     assert outcome.synthesis_triggered is False
     assert synthesize.calls == []
+    assert outcome.answer_engine is None
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +253,7 @@ def test_case4_ungrounded_initial_answer_recovers_via_regeneration():
     assert outcome.final_status == FinalAnswerStatus.ANSWERED
     assert outcome.answer_text == "The expansion's outcome was a record profit."
     assert outcome.source_passage_ids == ["p_b"]
+    assert outcome.answer_engine == "claude_regenerated"
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +311,7 @@ def test_case5_multi_passage_question_falls_back_to_synthesis():
     assert sorted(outcome.source_passage_ids) == ["p_founded", "p_ipo"]
     assert outcome.regenerated_answer_valid is False
     assert outcome.synthesis_triggered is True
+    assert outcome.answer_engine == "claude_synthesized"
 
 
 def test_regeneration_and_synthesis_both_failing_returns_fallback_status():
@@ -347,6 +352,7 @@ def test_regeneration_and_synthesis_both_failing_returns_fallback_status():
     assert outcome.final_status == FinalAnswerStatus.FALLBACK
     assert outcome.answer_text is None
     assert outcome.synthesis_triggered is True
+    assert outcome.answer_engine is None
 
 
 def test_unsafe_input_short_circuits_before_any_retrieval():
@@ -354,6 +360,7 @@ def test_unsafe_input_short_circuits_before_any_retrieval():
     outcome = _resolve("how to make a bomb at home", retriever)
     assert outcome.final_status == FinalAnswerStatus.NOT_ANSWERED
     assert outcome.rerank_triggered is False
+    assert outcome.answer_engine is None
 
 
 def test_off_topic_short_circuits_to_insufficient_evidence():
@@ -361,6 +368,42 @@ def test_off_topic_short_circuits_to_insufficient_evidence():
     outcome = _resolve("what is a corporation", retriever)
     assert outcome.final_status == FinalAnswerStatus.INSUFFICIENT_EVIDENCE
     assert outcome.rerank_triggered is False
+    assert outcome.answer_engine is None
+
+
+# ---------------------------------------------------------------------------
+# answer_engine must be set at exactly the three ANSWERED return points
+# and None everywhere else -- covered end to end by the cases above (case1 ->
+# claude_regenerated, case2 -> extractive, case5 -> claude_synthesized,
+# insufficient-evidence/fallback/unsafe/off-topic -> None). This test locks
+# in that the field is a closed set of values, not a free-form string.
+# ---------------------------------------------------------------------------
+def test_answer_engine_rejects_values_outside_the_three_stages():
+    import pytest
+    from pydantic import ValidationError
+
+    from speculative_rag.answer_orchestrator import AnswerOutcome
+    from speculative_rag.pipeline_schemas import PipelineResult, RagOutcome
+
+    with pytest.raises(ValidationError):
+        AnswerOutcome(
+            final_status=FinalAnswerStatus.ANSWERED,
+            answer_text="x",
+            source_passage_ids=[],
+            reason="ok",
+            answer_engine="something_else",
+            initial_answer_valid=True,
+            initial_answerable=True,
+            rerank_triggered=False,
+            rerank_latency_ms=None,
+            selected_source_ids=[],
+            reranked_answer_generated=False,
+            regenerated_answer_valid=None,
+            regenerated_answerable=None,
+            synthesis_triggered=False,
+            total_end_to_end_latency_ms=0.0,
+            pipeline_result=PipelineResult(outcome=RagOutcome.ANSWERED),
+        )
 
 
 def test_recovery_path_retrieves_only_once():
@@ -414,6 +457,52 @@ def test_recovery_path_retrieves_only_once():
     assert outcome.final_status == FinalAnswerStatus.ANSWERED
     assert embedder.calls == 1
     assert retriever.calls == 1
+
+
+# ---------------------------------------------------------------------------
+# Enabling the prefilter narrows what actually reaches rerank_and_generate.
+# ---------------------------------------------------------------------------
+def test_prefilter_enabled_narrows_candidates_passed_to_rerank_and_generate():
+    query = "how many keywords are mentioned"  # "how many" -> expected_type "numeric"
+    retriever = FakeRetriever(
+        RetrievalResult(
+            scored_chunks=[
+                _scored("Text about oranges is not relevant here.", 0.9, pid="p0"),
+                _scored("Many keywords are mentioned throughout this document extensively.", 0.8, pid="p1"),
+                _scored("A quiet aside mentions 42 in passing.", 0.7, pid="p2"),
+                _scored("Nothing here about the topic at all.", 0.6, pid="p3"),
+            ]
+        )
+    )
+
+    def fake_check_groundedness(query_text, answer_text, source_text):
+        return ReflectVerdict(
+            grounded=False, answers_query=False, complete=False, relevant=False, reasoning="force recovery"
+        )
+
+    captured = {}
+
+    def fake_rerank_and_generate(query_text, candidates):
+        captured["source_ids"] = [c.source_id for c in candidates]
+        return RerankAndAnswer(
+            selected_sources=[], selection_found=False, answerable=False, answer_text="", reasoning="stop here"
+        )
+
+    outcome = _resolve(
+        query,
+        retriever,
+        check_groundedness=fake_check_groundedness,
+        rerank_and_generate=fake_rerank_and_generate,
+        prefilter_enabled=True,
+        prefilter_lexical_top_n=1,
+        prefilter_retrieval_reserve=1,
+    )
+
+    # p0 survives as the retrieval-rank reserve, p1 as the lexical top match,
+    # p2 as the numeric-type rescue -- p3 (no overlap, no digit, not rank-1)
+    # never reaches the LLM call.
+    assert captured["source_ids"] == ["p0:native:0", "p1:native:0", "p2:native:0"]
+    assert outcome.final_status == FinalAnswerStatus.INSUFFICIENT_EVIDENCE
 
 
 def test_total_end_to_end_latency_is_recorded():

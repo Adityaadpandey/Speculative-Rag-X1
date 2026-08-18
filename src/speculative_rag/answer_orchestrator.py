@@ -31,10 +31,12 @@ and synthesis never run for a query the fast path already got right.
 """
 
 import time
+from typing import Literal
 
 from pydantic import BaseModel
 
 from speculative_rag.answer_status import FinalAnswerStatus, combine_verdict
+from speculative_rag.generation import prefilter_rerank_candidates
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import PipelineResult, RagOutcome
 from speculative_rag.reflect import (
@@ -50,6 +52,12 @@ class AnswerOutcome(BaseModel):
     answer_text: str | None
     source_passage_ids: list[str]
     reason: str
+    # Which stage actually produced answer_text, set explicitly at each of
+    # the three ANSWERED return points below and None everywhere else -- so
+    # the UI never has to infer this from which timeline steps ran (fragile:
+    # rerank can run but the answer still come from synthesis, or rerank can
+    # run and fail while the original extractive answer was already valid).
+    answer_engine: Literal["extractive", "claude_regenerated", "claude_synthesized"] | None = None
 
     # Instrumentation -- trace the actual data flow instead of just logging what the UI shows.
     initial_answer_valid: bool
@@ -79,6 +87,9 @@ def resolve_answer(
     rerank_and_generate=None,
     synthesize_answer=None,
     on_stage=None,
+    prefilter_enabled: bool = False,
+    prefilter_lexical_top_n: int = 8,
+    prefilter_retrieval_reserve: int = 5,
 ) -> AnswerOutcome:
     """Synchronous convenience wrapper: runs the fast path (run_pipeline)
     and the recovery chain (resolve_recovery) back to back. Used by CLI/eval
@@ -104,6 +115,9 @@ def resolve_answer(
         rerank_and_generate=rerank_and_generate,
         synthesize_answer=synthesize_answer,
         on_stage=on_stage,
+        prefilter_enabled=prefilter_enabled,
+        prefilter_lexical_top_n=prefilter_lexical_top_n,
+        prefilter_retrieval_reserve=prefilter_retrieval_reserve,
     )
 
 
@@ -114,6 +128,9 @@ def resolve_recovery(
     check_groundedness=None,
     rerank_and_generate=None,
     synthesize_answer=None,
+    prefilter_enabled: bool = False,
+    prefilter_lexical_top_n: int = 8,
+    prefilter_retrieval_reserve: int = 5,
     on_stage=None,
 ) -> AnswerOutcome:
     """The LLM validation/rerank+regenerate/synthesis chain, taking an
@@ -162,12 +179,14 @@ def resolve_recovery(
         synthesis_triggered: bool = False,
         answer_text: str | None = None,
         source_passage_ids: list[str] | None = None,
+        answer_engine: Literal["extractive", "claude_regenerated", "claude_synthesized"] | None = None,
     ) -> AnswerOutcome:
         return AnswerOutcome(
             final_status=final_status,
             answer_text=answer_text,
             source_passage_ids=source_passage_ids or [],
             reason=reason,
+            answer_engine=answer_engine,
             initial_answer_valid=initial_answer_valid,
             initial_answerable=initial_answerable,
             rerank_triggered=rerank_triggered,
@@ -219,6 +238,7 @@ def resolve_recovery(
                 initial_answerable=True,
                 answer_text=answer.text,
                 source_passage_ids=[answer.source_passage_id],
+                answer_engine="extractive",
             )
         # Initial answer didn't pass validation -- fall through to recovery below.
 
@@ -230,11 +250,27 @@ def resolve_recovery(
             initial_answerable=initial_answerable,
         )
 
-    # Rerank + regenerate in one call: look across the whole retrieved pool,
-    # not just embedding rank-1, find which passage(s) actually contain the
-    # answer, and answer directly from them -- this is the step that was
-    # missing before this module existed (see the module docstring).
-    rerank_candidates = [RerankCandidate(source_id=c.chunk.chunk_id, text=c.chunk.text) for c in candidates]
+    # Optional non-LLM prefilter narrowing the pool before it's handed to the
+    # LLM rerank+regenerate call below -- ships disabled by default (see
+    # config.SETTINGS.rerank_prefilter_enabled); prefilter_rerank_candidates
+    # itself always falls back to the full pool when it can't find any
+    # meaningful lexical signal to filter by, so enabling this can narrow the
+    # LLM's input but never expand it beyond what was already retrieved.
+    prefilter_candidates = candidates
+    if prefilter_enabled:
+        prefilter_candidates = prefilter_rerank_candidates(
+            query_text,
+            candidates,
+            lexical_top_n=prefilter_lexical_top_n,
+            retrieval_reserve=prefilter_retrieval_reserve,
+        )
+
+    # Rerank + regenerate in one call: look across the (possibly prefiltered)
+    # retrieved pool, not just embedding rank-1, find which passage(s)
+    # actually contain the answer, and answer directly from them -- this is
+    # the step that was missing before this module existed (see the module
+    # docstring).
+    rerank_candidates = [RerankCandidate(source_id=c.chunk.chunk_id, text=c.chunk.text) for c in prefilter_candidates]
     on_stage("reranking")
     rerank_start = time.perf_counter()
     rerank_verdict = rerank_and_generate(query_text, rerank_candidates)
@@ -280,6 +316,7 @@ def resolve_recovery(
                 regenerated_answerable=regenerated_answerable,
                 answer_text=rerank_verdict.answer_text,
                 source_passage_ids=[c.chunk.source_passage_id for c in evidence_chunks],
+                answer_engine="claude_regenerated",
             )
 
     # Regeneration from the reranked evidence still didn't pass validation
@@ -310,6 +347,7 @@ def resolve_recovery(
                 synthesis_triggered=True,
                 answer_text=synthesis_verdict.answer_text,
                 source_passage_ids=[c.chunk.source_passage_id for c in synth_sources],
+                answer_engine="claude_synthesized",
             )
         reason = f"multi-passage synthesis produced an answer but it failed validation: {reason3}"
     else:
