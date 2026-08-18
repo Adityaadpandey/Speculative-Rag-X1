@@ -54,6 +54,8 @@ def test_answered_path_returns_extractive_answer_and_all_stage_timings():
     assert "corporation" in result.answer.text
     assert result.answer.source_passage_id == "p1"
     assert result.answer.groundedness_score == 1.0
+    assert result.answer.raw_sentence == "A corporation is a company."
+    assert "corporation" in result.answer.matched_tokens
     assert result.top_score == 0.9
     assert [t.stage for t in result.timings] == [
         "guardrail_unsafe",

@@ -36,6 +36,14 @@ class Answer(BaseModel):
     source_chunk_id: str
     retrieval_score: float
     groundedness_score: float
+    # The untrimmed sentence `text` was selected/trimmed from -- so
+    # groundedness validation and provenance always have the full original
+    # sentence available even when a tighter clause is displayed as `text`.
+    raw_sentence: str = ""
+    # Query tokens matched in raw_sentence, for a future UI pass to
+    # highlight matches without reimplementing token matching in
+    # JavaScript. Not consumed by app.js in this change.
+    matched_tokens: list[str] = Field(default_factory=list)
 
 
 class StageTiming(BaseModel):

@@ -1,16 +1,32 @@
-from speculative_rag.generation import select_answer_span
+from speculative_rag.generation import prefilter_rerank_candidates, select_answer_span
+from speculative_rag.pipeline_schemas import ScoredChunk
+from speculative_rag.schemas import Chunk
+
+
+def _scored(text, score, pid="p1", suffix="0", language="en"):
+    return ScoredChunk(
+        chunk=Chunk(
+            chunk_id=f"{pid}:native:{suffix}",
+            text=text,
+            language=language,
+            query_type="DESCRIPTION",
+            source_passage_id=pid,
+            strategy="native",
+        ),
+        score=score,
+    )
 
 
 def test_select_span_picks_sentence_overlapping_query():
     passage = "Cats are mammals. The Eiffel Tower is in Paris. Dogs bark loudly."
-    span = select_answer_span("where is the Eiffel Tower", passage)
+    span = select_answer_span("where is the Eiffel Tower", passage, "en")
     assert "Eiffel Tower" in span
     assert "Cats" not in span
 
 
 def test_select_span_single_sentence_returns_whole_passage():
     passage = "A corporation is a legal entity"
-    assert select_answer_span("what is a corporation", passage) == "A corporation is a legal entity"
+    assert select_answer_span("what is a corporation", passage, "en") == "A corporation is a legal entity"
 
 
 def test_select_span_no_overlap_returns_none_instead_of_dumping_passage():
@@ -20,7 +36,26 @@ def test_select_span_no_overlap_returns_none_instead_of_dumping_passage():
     # *is* the source by construction) and marked ANSWERED. It must now
     # signal "no answer here" instead of masquerading as one.
     passage = "Cats are mammals. Dogs bark loudly."
-    span = select_answer_span("quantum chromodynamics theory", passage)
+    span = select_answer_span("quantum chromodynamics theory", passage, "en")
+    assert span is None
+
+
+def test_select_span_single_sentence_zero_overlap_returns_none():
+    # Regression fix: the single-sentence fallback used to return passage_text.strip()
+    # unconditionally, even with zero query overlap -- inconsistent with the
+    # multi-sentence path. It must now apply the same meaningful-evidence
+    # gate and return None instead of dumping the passage as if it answered.
+    passage = "Cats are mammals"
+    span = select_answer_span("quantum chromodynamics theory", passage, "en")
+    assert span is None
+
+
+def test_select_span_single_sentence_stopword_only_overlap_returns_none():
+    # Sharing only stopwords ("is", "of", "the") with the query is not
+    # meaningful evidence -- the content-word-only gate must reject this
+    # even though a naive token-set intersection would call it a match.
+    passage = "This is one of the many buildings."
+    span = select_answer_span("what is the capital of France", passage, "en")
     assert span is None
 
 
@@ -37,7 +72,7 @@ def test_select_span_picks_only_relevant_sentence_among_many_irrelevant():
         "The bridge was repainted recently. A new cafe opened downtown. "
         "Rainfall was below average this year."
     )
-    span = select_answer_span("what was the immediate impact of the test", passage)
+    span = select_answer_span("what was the immediate impact of the test", passage, "en")
     assert span == "The immediate impact of the test was a bright flash visible for miles."
 
 
@@ -51,13 +86,13 @@ def test_select_span_prefers_type_matching_sentence_over_higher_overlap_topical_
         "You will need to have good credit and provide proof of income for the card. "
         "A score of 660 or better is required."
     )
-    span = select_answer_span("what credit score do you need for the card", passage)
+    span = select_answer_span("what credit score do you need for the card", passage, "en")
     assert span == "A score of 660 or better is required."
 
 
 def test_select_span_breaks_overlap_tie_toward_later_sentence():
     # Real production regression: the intro sentence restates the passage's
-    # own subject ("Manhattan Project") and ties on raw overlap with the
+    # own subject ("Manhattan Project") and ties on weighted score with the
     # sentence that actually answers the query, since "impact" never appears
     # verbatim anywhere -- lexical overlap alone can't tell them apart. When
     # tied, prefer the later sentence: definition-then-consequence is the
@@ -69,7 +104,7 @@ def test_select_span_breaks_overlap_tie_toward_later_sentence():
         "making it known that something this powerful can be manmade."
     )
     span = select_answer_span(
-        "what was the immediate impact of the success of the manhattan project?", passage
+        "what was the immediate impact of the success of the manhattan project?", passage, "en"
     )
     assert span.startswith("The success of this project")
 
@@ -79,7 +114,7 @@ def test_select_span_falls_back_to_overlap_when_no_candidate_satisfies_type():
     # the type filter must not eliminate every candidate; fall back to the
     # plain overlap-ranked choice instead of returning None.
     passage = "The card requires excellent credit. Approval also depends on your income."
-    span = select_answer_span("what credit score do you need for the card", passage)
+    span = select_answer_span("what credit score do you need for the card", passage, "en")
     assert span == "The card requires excellent credit."
 
 
@@ -94,7 +129,7 @@ def test_select_span_strips_duplicate_tail_corruption():
     # copy of itself instead of a clean, single answer.
     original = "The capital of Ruritania is Strelsauville, a scenic city on the northern bank of the river Endar. "
     passage = original + original[1:]
-    span = select_answer_span("what is the capital of Ruritania", passage)
+    span = select_answer_span("what is the capital of Ruritania", passage, "en")
     assert span == original.strip()
     assert span.count("Strelsauville") == 1
 
@@ -105,5 +140,77 @@ def test_select_span_splits_sentence_glued_to_next_by_missing_space():
     # split_sentences must still isolate the query-relevant sentence rather
     # than returning it merged with an unrelated trailing clause.
     passage = "The capital of Ruritania is Strelsau.Alphabetical list of Zendan cities follows."
-    span = select_answer_span("what is the capital of Ruritania", passage)
+    span = select_answer_span("what is the capital of Ruritania", passage, "en")
     assert span == "The capital of Ruritania is Strelsau."
+
+
+def test_select_span_prefers_bigram_phrase_match_over_scattered_overlap(monkeypatch):
+    # Two sentences share the same content-word overlap count, but one
+    # has the query's words adjacent to each other ("capital of France") and
+    # the other has them scattered -- with a nonzero bigram bonus, that
+    # should break the tie toward the phrase match. Monkeypatched to a
+    # nonzero weight because the shipped production value is calibrated to
+    # 0.0 (see scoring._BIGRAM_BONUS's comment) -- this test exercises the
+    # mechanism itself, not the current production tuning.
+    import speculative_rag.scoring as scoring
+
+    monkeypatch.setattr(scoring, "_BIGRAM_BONUS", 0.5)
+    passage = "Paris is the capital of France. France has a capital city called Paris."
+    span = select_answer_span("capital of france", passage, "en")
+    assert span == "Paris is the capital of France."
+
+
+def test_select_span_trims_to_clause_satisfying_expected_type():
+    # A numeric query whose winning sentence has multiple comma-delimited
+    # clauses, only one of which actually contains a number -- plain
+    # type-matching at the sentence level would return the whole sentence;
+    # the clause trim should narrow it to just the clause with the number.
+    passage = "The festival lasted three days, took place in the city park, drew a crowd of 5000 people."
+    span = select_answer_span("how many people attended the festival", passage, "en")
+    assert span == "drew a crowd of 5000 people."
+
+
+def test_select_span_strips_leading_connective_without_corrupting_acronym():
+    # The leading-connective strip must uppercase only the first cased
+    # character of the remainder, not run str.capitalize() -- capitalize()
+    # would lowercase the rest of the string, turning "NASA" into "Nasa".
+    passage = "The rover landed safely. However, the NASA team detected a signal delay."
+    span = select_answer_span("what team detected a signal delay", passage, "en")
+    assert span == "The NASA team detected a signal delay."
+
+
+# ---------------------------------------------------------------------------
+# prefilter_rerank_candidates
+# ---------------------------------------------------------------------------
+def test_prefilter_keeps_union_of_lexical_top_retrieval_reserve_and_type_match():
+    query = "how many keywords are mentioned"  # "how many" -> expected_type "numeric"
+    c0 = _scored("Text about oranges is not relevant here.", 0.9, pid="p0")
+    c1 = _scored("Many keywords are mentioned throughout this document extensively.", 0.8, pid="p1")
+    c2 = _scored("A quiet aside mentions 42 in passing.", 0.7, pid="p2")
+    c3 = _scored("Nothing here about the topic at all.", 0.6, pid="p3")
+
+    survivors = prefilter_rerank_candidates(query, [c0, c1, c2, c3], lexical_top_n=1, retrieval_reserve=1)
+
+    survivor_ids = {c.chunk.source_passage_id for c in survivors}
+    # c0 survives as the retrieval-rank reserve, c1 as the lexical top match,
+    # c2 as the numeric-type rescue despite near-zero lexical overlap, and c3
+    # (no overlap, no digit, not rank-1) is correctly excluded.
+    assert survivor_ids == {"p0", "p1", "p2"}
+    assert [c.chunk.source_passage_id for c in survivors] == ["p0", "p1", "p2"]  # retrieval order preserved
+
+
+def test_prefilter_skips_filtering_when_pool_has_zero_meaningful_overlap():
+    # The prefilter must never be the reason a query fails: if nothing in
+    # the pool shares meaningful vocabulary with the query, pass the whole
+    # pool through unfiltered rather than guessing.
+    query = "quantum chromodynamics theory"
+    candidates = [
+        _scored("Cats are popular household pets.", 0.9, pid="p0"),
+        _scored("The weather today is sunny and warm.", 0.8, pid="p1"),
+    ]
+    survivors = prefilter_rerank_candidates(query, candidates, lexical_top_n=1, retrieval_reserve=1)
+    assert survivors == candidates
+
+
+def test_prefilter_empty_candidates_returns_empty():
+    assert prefilter_rerank_candidates("anything", [], lexical_top_n=8, retrieval_reserve=5) == []

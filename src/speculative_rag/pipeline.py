@@ -89,7 +89,7 @@ def run_pipeline(
             num_evidence_candidates=len(evidence_candidates),
             retrieved_chunks=retrieval.scored_chunks,
         )
-    chosen, span = best
+    chosen, span, raw_sentence, matched_tokens = best
 
     with timer.stage("guardrail_groundedness"):
         ground = groundedness_score(span, chosen.chunk.text)
@@ -128,6 +128,8 @@ def run_pipeline(
         source_chunk_id=chosen.chunk.chunk_id,
         retrieval_score=chosen.score,
         groundedness_score=ground,
+        raw_sentence=raw_sentence,
+        matched_tokens=matched_tokens,
     )
     return PipelineResult(
         outcome=RagOutcome.ANSWERED,
