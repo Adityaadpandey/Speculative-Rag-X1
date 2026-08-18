@@ -2,6 +2,8 @@
 
 A retrieval-augmented QA system over [`ai4bharat/MSMARCO-XI`](https://huggingface.co/datasets/ai4bharat/MSMARCO-XI) (MS MARCO machine-translated into 14 Indic languages), scoped to Hindi, English, and Tamil. Voice query → Sarvam STT → BM25 sparse retrieval (Qdrant) → extractive answer, all inside a **<200ms hot-path SLA**, with an async LLM recovery chain (groundedness check → rerank+regenerate → multi-passage synthesis) layered on top whenever the fast answer doesn't hold up, reported separately and never counted against the SLA.
 
+> **Naming note:** despite the name, this is not an implementation of the [Speculative RAG paper](https://arxiv.org/abs/2407.08223) (a smaller specialist LM drafts several candidate answers in parallel from different document subsets, a larger generalist LM verifies and picks one). There's no specialist/generalist LM pair and no parallel drafting here. The "speculative" part is closer to speculative *decoding*: the hot path always commits to a cheap, zero-LLM guess first (extractive span selection) and shows it immediately, and a slower LLM check — outside the SLA — runs after the fact and can overrule it.
+
 ## How it works
 
 ```mermaid
@@ -124,6 +126,30 @@ uv run pytest
 ```
 
 Tests marked `slow` (in `pyproject.toml`) download models or hit local services — excluded by default in CI-style runs with `-m "not slow"` if needed.
+
+## Tradeoffs, and what scaling this up would take
+
+**Why this shape**
+
+- Latency is bounded and predictable — the hot path touches no third-party API, so its tail latency is governed by local BM25 scoring plus one Qdrant round trip, not by an LLM provider's own tail latency.
+- It degrades gracefully — if the Anthropic API is slow, rate-limited, or down, the fast extractive answer still returns; only the "is this actually right" confirmation is missing, not the answer itself.
+- It's cheap to run at rest — no dense embedding model in-process (`sparse_embedding.py`, BM25 only) keeps the deployed instance inside a free-tier 512MB host with zero GPU.
+- The branching logic is deterministic and unit-testable — `generation.py`'s extractive selection is pure Python with no model call, so `pipeline.py`/`answer_orchestrator.py` are tested with fakes instead of mocked LLM responses.
+
+**What it costs**
+
+- It doesn't save LLM spend, only latency. `webapp/main.py`'s `post_answer` always schedules the recovery chain in the background, and `answer_orchestrator.resolve_recovery` always runs a groundedness check on every request that reaches `ANSWERED` — so LLM cost still scales linearly with query volume. Only the deeper rerank+regenerate/synthesis calls are conditional on that cheap check failing.
+- The fast path has a hard quality ceiling. Extractive selection can only return a verbatim span already present in one retrieved passage — it can't synthesize across passages or rephrase — so the first answer a user sees is sometimes wrong on multi-hop or not-verbatim-in-any-single-passage queries, until (if) recovery resolves it.
+- The displayed answer can flip after the fact. The web UI shows the fast answer immediately, then updates `final_status` — and sometimes the answer text itself — once the async chain resolves; something that looked `ANSWERED` for a second can become `UNGROUNDED` or get replaced by a synthesized answer. That's a real UX cost paid for lower perceived latency.
+- Retrieval quality is bounded by BM25 lexical overlap. There's no semantic matching, so paraphrased or vocabulary-mismatched queries recall worse than a dense/hybrid retriever would — `run_embedding_model_eval.py` exists specifically to measure that gap.
+
+**What scaling past a single free-tier instance would need**
+
+- `_PENDING_ANSWERS` (`webapp/main.py`) is an in-memory `OrderedDict` on one process, and the two-phase `/api/answer` → poll `/api/answer/{request_id}` flow only works because there's exactly one replica. More than one uvicorn worker or Render instance needs that moved to a shared store (Redis, a DB row) any replica can read.
+- The recovery chain runs via `asyncio.to_thread` + FastAPI `BackgroundTasks` inside the same process — fine at low QPS, but it has no retry, no backpressure against Anthropic's rate limits, and drops in-flight work if the process restarts. A loaded deployment would want a real task queue (Celery/RQ or similar) instead.
+- `SparseEmbedder`/`Retriever` are loaded once per language at startup as module globals (`_load_state`) — every replica pays that load cost independently, and the local file-based Qdrant client (the no-`QDRANT_URL` branch of `get_qdrant_client`) doesn't support concurrent multi-process access at all, so production already requires Qdrant Cloud. That cluster's own measured warm round trip (~175ms REST, see the comment in `config.py`) already eats most of the 200ms hot-path budget, leaving little headroom to add another network hop — a cache lookup, say — without breaking the SLA.
+- Nothing is cached today. Identical or near-identical queries re-run BM25 retrieval and re-pay the LLM groundedness check every time. Caching groundedness verdicts, or skipping the check above some retrieval-score/answer-type confidence threshold, is the most direct lever for cutting both latency and LLM cost at real volume — neither is implemented yet.
+- Growing past hi/en/ta means adding a `LanguageSource` in `config.py` and validating that BM25's per-language tokenizer/stemmer setup (`sparse_embedding.py`) actually produces reasonable stems for the new language — stemming quality varies a lot across Indic languages and there's no generic fallback if it doesn't.
 
 ## Deployment
 
