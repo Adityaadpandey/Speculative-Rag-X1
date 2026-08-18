@@ -17,10 +17,7 @@ def _is_word_char(ch: str) -> bool:
     return category[0] in _WORD_CATEGORIES or category in _COMBINING_CATEGORIES
 
 
-def tokenize(text: str) -> set[str]:
-    """Lowercased set of word tokens. Unicode-aware so it works for
-    Devanagari/Tamil as well as Latin scripts -- used by both the
-    groundedness check and extractive span selection."""
+def _split_words(text: str) -> list[str]:
     tokens = []
     current: list[str] = []
     for ch in text:
@@ -31,4 +28,19 @@ def tokenize(text: str) -> set[str]:
             current = []
     if current:
         tokens.append("".join(current))
-    return {token.lower() for token in tokens}
+    return tokens
+
+
+def tokenize(text: str) -> set[str]:
+    """Lowercased set of word tokens. Unicode-aware so it works for
+    Devanagari/Tamil as well as Latin scripts -- used by both the
+    groundedness check and extractive span selection."""
+    return {token.lower() for token in _split_words(text)}
+
+
+def tokenize_ordered(text: str) -> list[str]:
+    """Same word-char/lowercasing logic as tokenize(), but returns the
+    ordered, non-deduplicated token list instead of a set -- a set can't
+    support bigram/phrase matching since it throws away adjacency, and it
+    can't tell a repeated word from a single occurrence."""
+    return [token.lower() for token in _split_words(text)]

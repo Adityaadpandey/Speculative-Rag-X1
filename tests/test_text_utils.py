@@ -1,4 +1,4 @@
-from speculative_rag.text_utils import tokenize
+from speculative_rag.text_utils import tokenize, tokenize_ordered
 
 
 def test_tokenize_lowercases_and_splits_on_word_boundaries():
@@ -20,3 +20,15 @@ def test_tokenize_handles_tamil_combining_marks():
     # must stay attached to their base letter, not become separate tokens.
     tokens = tokenize("தமிழ் மொழி")
     assert tokens == {"தமிழ்", "மொழி"}
+
+
+def test_tokenize_ordered_preserves_order_and_duplicates():
+    assert tokenize_ordered("A Corporation is a corporation!") == ["a", "corporation", "is", "a", "corporation"]
+
+
+def test_tokenize_ordered_empty_string_is_empty_list():
+    assert tokenize_ordered("") == []
+
+
+def test_tokenize_ordered_handles_devanagari():
+    assert tokenize_ordered("दिल्ली भारत की दिल्ली") == ["दिल्ली", "भारत", "की", "दिल्ली"]
