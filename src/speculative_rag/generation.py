@@ -26,6 +26,20 @@ _DUPLICATE_TAIL_PROBE_LEN = 30
 # _trim_to_best_clause.
 _CLAUSE_SPLIT_RE = re.compile(r"[,;]")
 
+# Encyclopedic geography passages love the "X is bordered by A to the north,
+# B to the south, C to the east, ..." construction -- comma-splitting a
+# sentence like that produces list items ("Goa to the north west") that read
+# as dangling fragments on their own, because the subject and verb ("X is
+# bordered by") live only in the first clause and never repeat. Matches a
+# bare "<name> to the <direction>[ <word>]" clause with nothing else in it,
+# so _trim_to_best_clause knows to splice the lead clause back on instead of
+# handing back the fragment alone.
+_BARE_DIRECTIONAL_FRAGMENT_RE = re.compile(
+    r"^[\w'&.-]+(?:\s[\w'&.-]+)*\sto\sthe\s"
+    r"(north|south|east|west|northeast|northwest|southeast|southwest)(\s\w+)?$",
+    re.IGNORECASE,
+)
+
 # Leading connective phrases stripped from the final span so it reads as a
 # standalone sentence rather than a mid-argument fragment ("However, the
 # launch was delayed." -> "The launch was delayed."). English/Latin-script
@@ -103,7 +117,10 @@ def _trim_to_best_clause(
         scored = score_sentence(query_tokens, tokenize_ordered(clause), language)
         return (scored.score, scored.bigram_score, clauses.index(clause))
 
-    return max(typed, key=clause_key)
+    winner = max(typed, key=clause_key)
+    if winner != clauses[0] and _BARE_DIRECTIONAL_FRAGMENT_RE.match(winner):
+        return f"{clauses[0]}, {winner}"
+    return winner
 
 
 class _SelectedSpan(NamedTuple):

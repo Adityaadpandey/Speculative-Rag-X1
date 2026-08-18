@@ -170,6 +170,20 @@ def test_select_span_trims_to_clause_satisfying_expected_type():
     assert span == "drew a crowd of 5000 people."
 
 
+def test_select_span_keeps_lead_clause_for_bare_directional_list_item():
+    # Real corpus sentence shape (en_native, Karnataka passage): a shared
+    # subject+verb followed by a comma list of "NP to the DIRECTION" items.
+    # The clause that actually mentions Goa ("Goa to the north west") has no
+    # subject or verb of its own -- on its own it's not a sentence. The trim
+    # must splice the lead clause back on so the answer still reads as one.
+    passage = (
+        "Karnataka is bordered by the Arabian Sea to the west, Goa to the north west, "
+        "Maharashtra to the north, and Kerala to the south west."
+    )
+    span = select_answer_span("where is goa", passage, "en")
+    assert span == "Karnataka is bordered by the Arabian Sea to the west, Goa to the north west"
+
+
 def test_select_span_strips_leading_connective_without_corrupting_acronym():
     # The leading-connective strip must uppercase only the first cased
     # character of the remainder, not run str.capitalize() -- capitalize()
