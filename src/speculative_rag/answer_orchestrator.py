@@ -37,7 +37,11 @@ from typing import Literal
 from pydantic import BaseModel
 
 from speculative_rag.answer_status import FinalAnswerStatus, combine_verdict
-from speculative_rag.generation import complete_answer_from_evidence, prefilter_rerank_candidates
+from speculative_rag.generation import (
+    complete_answer_from_evidence,
+    prefilter_rerank_candidates,
+    select_best_evidence,
+)
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import PipelineResult, RagOutcome
 from speculative_rag.reflect import (
@@ -396,6 +400,46 @@ def resolve_recovery(
         reason = f"multi-passage synthesis produced an answer but it failed validation: {reason3}"
     else:
         reason = synthesis_verdict.reasoning or "no passage, alone or combined, answers the question"
+
+    # Never surface an LLM-invented sentence just because the final prose
+    # generation failed validation. If the semantic reranker selected useful
+    # evidence, return a grounded extractive span from that evidence instead.
+    # This is preferable to showing "No verified answer" for cases such as
+    # Goa, where the source contains a valid answer but synthesis added an
+    # unsupported geographic description.
+    fallback_candidates = evidence_chunks or candidates
+    # Only use this recovery when a validator agreed the generated answer was
+    # aimed at the question but rejected its wording/claims. If validation
+    # says the evidence does not answer the question at all, returning a
+    # partial extractive sentence would be misleading (for example, answering
+    # only the founding year of a two-part founding/IPO question).
+    extractive_fallback = (
+        select_best_evidence(query_text, fallback_candidates)
+        if regenerated_answerable or initial_answerable
+        else None
+    )
+    if extractive_fallback is not None:
+        fallback_chunk, fallback_span, _, _ = extractive_fallback
+        fallback_span = complete_answer_from_evidence(
+            fallback_span,
+            [fallback_chunk.chunk.text],
+        )
+        return terminal(
+            FinalAnswerStatus.ANSWERED,
+            "LLM generation failed validation; returned a grounded extractive answer from the selected evidence",
+            initial_answer_valid=initial_answer_valid,
+            initial_answerable=initial_answerable,
+            rerank_triggered=True,
+            rerank_latency_ms=rerank_latency_ms,
+            selected_source_ids=selected_source_ids,
+            reranked_answer_generated=reranked_answer_generated,
+            regenerated_answer_valid=regenerated_answer_valid,
+            regenerated_answerable=regenerated_answerable,
+            synthesis_triggered=True,
+            answer_text=fallback_span,
+            source_passage_ids=[fallback_chunk.chunk.source_passage_id],
+            answer_engine="extractive",
+        )
 
     return terminal(
         FinalAnswerStatus.FALLBACK,

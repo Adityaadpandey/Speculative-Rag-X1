@@ -38,6 +38,7 @@ from speculative_rag.latency import percentile
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.retrieval import Retriever
 from speculative_rag.sparse_embedding import SparseEmbedder
+from speculative_rag.text_utils import tokenize_ordered
 
 from scripts.ingest_production_corpus import (
     SAMPLE_QUERIES,
@@ -54,9 +55,6 @@ PRODUCTION_LANGUAGES = set(_TARGET_CORPUS)
 # pool width production actually uses by default.
 DEFAULT_TOP_K = SETTINGS.answer_top_k
 
-TOKEN_RE = re.compile(r"\w+", re.UNICODE)
-
-
 # -----------------------------
 # Text / answer metrics
 # -----------------------------
@@ -70,7 +68,13 @@ def normalize_text(text: Any) -> str:
 
 
 def tokens(text: Any) -> list[str]:
-    return TOKEN_RE.findall(normalize_text(text))
+    # Reuses the same Unicode-aware tokenizer the real pipeline scores with
+    # (text_utils.py), not a hand-rolled `\w+` regex -- plain `\w+` doesn't
+    # include Devanagari/Tamil combining marks (matras, virama), so it was
+    # shattering words like "यंत्र" into meaningless fragments ("य", "त",
+    # "र") and silently corrupting every Hindi/Tamil F1/EM/ROUGE-L number
+    # this benchmark reported.
+    return tokenize_ordered(normalize_text(text))
 
 
 def exact_match(prediction: str, gold: str) -> float:
