@@ -26,7 +26,13 @@ from speculative_rag.answer_status import combine_verdict
 from speculative_rag.config import BCP47_LANGUAGE_CODES, LANGUAGE_SOURCES, SETTINGS, get_qdrant_client
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import RagOutcome
-from speculative_rag.reflect import RerankCandidate, check_groundedness_llm, rerank_passages_llm, synthesize_answer_llm
+from speculative_rag.reflect import (
+    RerankCandidate,
+    check_groundedness_llm,
+    rerank_passages_llm,
+    stream_generate_answer_llm,
+    synthesize_answer_llm,
+)
 from speculative_rag.retrieval import Retriever
 from speculative_rag.sparse_embedding import SparseEmbedder
 from speculative_rag.stt import SarvamAPIKeyMissingError, transcribe_audio
@@ -153,8 +159,8 @@ class AnswerRequest(BaseModel):
 
 
 def _serialize_pipeline(pipeline_result) -> dict:
-    # Keep this deliberately capped: the UI needs enough context to explain
-    # the answer, not a second copy of the whole retrieval payload.
+    # Keep this capped at the same pool width used by the answer pipeline:
+    # the UI should expose what was actually considered, not only rank 1.
     retrieved_candidates = [
         {
             "rank": rank,
@@ -166,7 +172,7 @@ def _serialize_pipeline(pipeline_result) -> dict:
             "query_type": scored.chunk.query_type,
             "strategy": scored.chunk.strategy,
         }
-        for rank, scored in enumerate(pipeline_result.retrieved_chunks[:5], start=1)
+        for rank, scored in enumerate(pipeline_result.retrieved_chunks[:20], start=1)
     ]
     return {
         "outcome": pipeline_result.outcome.value,
@@ -223,12 +229,28 @@ def _stage_reporter(request_id: str):
     return on_stage
 
 
+def _answer_reporter(request_id: str):
+    partial = [""]
+
+    def on_delta(delta: str) -> None:
+        partial[0] += delta
+        _PENDING_ANSWERS[request_id] = {
+            "status": "resolving",
+            "stage": "generating",
+            "partial_answer": partial[0],
+        }
+
+    return on_delta
+
+
 async def _run_recovery(request_id: str, query_text: str, pipeline_result) -> None:
     outcome = await asyncio.to_thread(
         resolve_recovery,
         query_text,
         pipeline_result,
         on_stage=_stage_reporter(request_id),
+        stream_answer=stream_generate_answer_llm,
+        on_answer_delta=_answer_reporter(request_id),
         prefilter_enabled=SETTINGS.rerank_prefilter_enabled,
         prefilter_lexical_top_n=SETTINGS.rerank_prefilter_lexical_top_n,
         prefilter_retrieval_reserve=SETTINGS.rerank_prefilter_retrieval_reserve,

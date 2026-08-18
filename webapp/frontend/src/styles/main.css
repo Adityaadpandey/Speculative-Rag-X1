@@ -374,6 +374,8 @@ button.secondary:hover { background: rgba(244, 229, 0, 0.1); }
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
 .answer-text { font-family: var(--font-display); font-size: clamp(1.35rem, 2.4vw, 1.8rem); font-weight: 600; letter-spacing: -0.015em; margin: 0 0 0.8rem; line-height: 1.35; }
+.answer-text--streaming::after { content: "▌"; display: inline-block; margin-left: 0.12em; color: var(--hh-yellow); animation: stream-caret 0.8s steps(1) infinite; }
+@keyframes stream-caret { 50% { opacity: 0; } }
 .refusal-text { font-size: 1.02rem; margin: 0 0 0.6rem; color: var(--hh-pink); }
 /* pre-wrap, not the default normal: inline-block establishes its own
    formatting context, so plain whitespace collapsing would trim the

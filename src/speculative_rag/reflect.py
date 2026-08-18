@@ -228,6 +228,35 @@ def generate_answer_llm(query_text: str, evidence_texts: list[str]) -> Generated
     return parsed
 
 
+def stream_generate_answer_llm(
+    query_text: str,
+    evidence_texts: list[str],
+    on_delta,
+) -> str:
+    """Stream the answer text while keeping final validation synchronous.
+
+    Passage selection remains structured and completes first. Only the prose
+    answer is streamed to the UI; the completed text is still validated by
+    the normal groundedness/relevance checks before it becomes final.
+    """
+    client = anthropic.Anthropic()
+    evidence_block = "\n".join(f"- {text}" for text in evidence_texts)
+    prompt = _GENERATE_ANSWER_PROMPT_TEMPLATE.format(
+        query_text=query_text,
+        evidence_block=evidence_block,
+    )
+    parts: list[str] = []
+    with client.messages.stream(
+        model=_MODEL,
+        max_tokens=2048,
+        messages=[{"role": "user", "content": prompt}],
+    ) as stream:
+        for text in stream.text_stream:
+            parts.append(text)
+            on_delta(text)
+    return "".join(parts).strip()
+
+
 # Latency optimization for answer_orchestrator.resolve_recovery:
 # rerank_passages_llm and generate_answer_llm above are two separate network
 # round trips doing "which passage is right" then "answer from it" -- this

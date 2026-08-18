@@ -132,7 +132,7 @@ function resetResultView() {
   resultReasonEl.textContent = "";
   latencyTableBodyEl.innerHTML = "";
   totalE2eLatencyMsEl.textContent = "";
-  retrievalCountEl.textContent = "0 / 5";
+  retrievalCountEl.textContent = "0 / 20";
   retrievalListEl.innerHTML = "";
   state.lastAnswerText = null;
   state.currentRecoveryPhase = null;
@@ -160,15 +160,27 @@ function showAnswer(text, sourceIds) {
   answerSkeletonEl.hidden = true;
   refusalTextEl.hidden = true;
   answerTextEl.hidden = false;
+  answerTextEl.classList.remove("answer-text--streaming");
   renderAnswerDiff(answerTextEl, state.lastAnswerText, text);
   state.lastAnswerText = text;
   answerSourcesRowEl.hidden = false;
   answerSourceIdsEl.textContent = sourceIds.join(", ") || "none";
 }
 
+function showStreamingAnswer(text) {
+  answerSkeletonEl.hidden = true;
+  refusalTextEl.hidden = true;
+  answerTextEl.hidden = false;
+  answerTextEl.classList.add("answer-text--streaming");
+  answerTextEl.textContent = text;
+  state.lastAnswerText = text;
+  answerSourcesRowEl.hidden = true;
+}
+
 function showRefusal(reason) {
   answerSkeletonEl.hidden = true;
   answerTextEl.hidden = true;
+  answerTextEl.classList.remove("answer-text--streaming");
   answerSourcesRowEl.hidden = true;
   refusalTextEl.hidden = false;
   refusalTextEl.textContent = reason || "No validated answer could be produced.";
@@ -181,8 +193,8 @@ function willRunVerify(pipelineOutcome) {
 
 function renderRetrievedCandidates(candidates = [], selectedSourceIds = []) {
   retrievalListEl.innerHTML = "";
-  const visible = candidates.slice(0, 5);
-  retrievalCountEl.textContent = `${visible.length} / 5`;
+  const visible = candidates.slice(0, 20);
+  retrievalCountEl.textContent = `${visible.length} / 20`;
 
   if (!visible.length) {
     const empty = document.createElement("p");
@@ -273,6 +285,13 @@ function renderStageProgress(stage) {
     if (!timelineHandle.steps.verify.el.hidden) {
       setStepState(timelineHandle, "verify", { state: "corrected", detail: "flagged for a closer look — escalating to re-ranking" });
     }
+  } else if (stage === "generating") {
+    state.currentRecoveryPhase = "rerank";
+    setStepState(timelineHandle, "rerank", {
+      state: "active",
+      hidden: false,
+      detail: "Claude is drafting a grounded answer from the selected evidence…",
+    });
   } else if (stage === "synthesizing") {
     state.currentRecoveryPhase = "synthesis";
     setStepState(timelineHandle, "synthesis", {
@@ -372,7 +391,7 @@ function renderResult(data) {
   renderInstrumentation(data.instrumentation, data.final_status);
 }
 
-const POLL_INTERVAL_MS = 700;
+const POLL_INTERVAL_MS = 250;
 
 async function pollForFinalAnswer(requestId) {
   for (;;) {
@@ -387,6 +406,7 @@ async function pollForFinalAnswer(requestId) {
       renderResult(data);
       return;
     }
+    if (data.partial_answer) showStreamingAnswer(data.partial_answer);
     renderStageProgress(data.stage);
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }

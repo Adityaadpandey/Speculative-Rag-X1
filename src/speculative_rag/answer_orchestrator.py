@@ -45,9 +45,12 @@ from speculative_rag.generation import (
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import PipelineResult, RagOutcome
 from speculative_rag.reflect import (
+    RerankAndAnswer,
     RerankCandidate,
+    SelectedSource,
     check_groundedness_llm,
     rerank_and_generate_llm,
+    rerank_passages_llm,
     synthesize_answer_llm,
 )
 
@@ -116,6 +119,8 @@ def resolve_answer(
     prefilter_retrieval_reserve: int = 5,
     dense_rerank_enabled: bool = False,
     dense_rerank=None,
+    stream_answer=None,
+    on_answer_delta=None,
 ) -> AnswerOutcome:
     """Synchronous convenience wrapper: runs the fast path (run_pipeline)
     and the recovery chain (resolve_recovery) back to back. Used by CLI/eval
@@ -146,6 +151,8 @@ def resolve_answer(
         prefilter_retrieval_reserve=prefilter_retrieval_reserve,
         dense_rerank_enabled=dense_rerank_enabled,
         dense_rerank=dense_rerank,
+        stream_answer=stream_answer,
+        on_answer_delta=on_answer_delta,
     )
 
 
@@ -161,6 +168,8 @@ def resolve_recovery(
     prefilter_retrieval_reserve: int = 5,
     dense_rerank_enabled: bool = False,
     dense_rerank=None,
+    stream_answer=None,
+    on_answer_delta=None,
     on_stage=None,
 ) -> AnswerOutcome:
     """The LLM validation/rerank+regenerate/synthesis chain, taking an
@@ -188,6 +197,7 @@ def resolve_recovery(
     rerank_and_generate = rerank_and_generate or rerank_and_generate_llm
     synthesize_answer = synthesize_answer or synthesize_answer_llm
     dense_rerank = dense_rerank or _default_dense_rerank
+    on_answer_delta = on_answer_delta or (lambda delta: None)
     on_stage = on_stage or (lambda stage: None)
 
     start = time.perf_counter()
@@ -305,17 +315,43 @@ def resolve_recovery(
             retrieval_reserve=prefilter_retrieval_reserve,
         )
 
-    # Rerank + regenerate in one call: look across the (possibly prefiltered)
-    # retrieved pool, not just embedding rank-1, find which passage(s)
-    # actually contain the answer, and answer directly from them -- this is
-    # the step that was missing before this module existed (see the module
-    # docstring).
+    # Rerank the (possibly prefiltered) pool, then either use the existing
+    # combined rerank+generate call or stream generation after selection.
+    # Streaming deliberately splits these two operations: passage selection
+    # remains structured, while answer prose can reach the browser token by
+    # token and is still validated in full before becoming final.
     rerank_candidates = [RerankCandidate(source_id=c.chunk.chunk_id, text=c.chunk.text) for c in prefilter_candidates]
+    by_chunk_id = {c.chunk.chunk_id: c for c in candidates}
     on_stage("reranking")
     rerank_start = time.perf_counter()
-    rerank_verdict = rerank_and_generate(query_text, rerank_candidates)
-    rerank_latency_ms = (time.perf_counter() - rerank_start) * 1000.0
-    selected_source_ids = [s.source_id for s in rerank_verdict.selected_sources]
+
+    if stream_answer is None:
+        rerank_verdict = rerank_and_generate(query_text, rerank_candidates)
+        selected_source_ids = [s.source_id for s in rerank_verdict.selected_sources]
+        rerank_latency_ms = (time.perf_counter() - rerank_start) * 1000.0
+        evidence_chunks = [by_chunk_id[sid] for sid in selected_source_ids if sid in by_chunk_id]
+        evidence_texts = [c.chunk.text for c in evidence_chunks]
+    else:
+        selection = rerank_passages_llm(query_text, rerank_candidates)
+        selected_source_ids = [s.source_id for s in selection.selected_sources]
+        evidence_chunks = [by_chunk_id[sid] for sid in selected_source_ids if sid in by_chunk_id]
+        evidence_texts = [c.chunk.text for c in evidence_chunks]
+        if selection.answerable and selected_source_ids and evidence_texts:
+            on_stage("generating")
+            streamed_answer = stream_answer(query_text, evidence_texts, on_answer_delta)
+        else:
+            streamed_answer = ""
+        rerank_latency_ms = (time.perf_counter() - rerank_start) * 1000.0
+        rerank_verdict = RerankAndAnswer(
+            selected_sources=[
+                SelectedSource(source_id=s.source_id, relevance_score=s.relevance_score)
+                for s in selection.selected_sources
+            ],
+            selection_found=selection.answerable and bool(selected_source_ids),
+            answerable=selection.answerable and bool(streamed_answer),
+            answer_text=streamed_answer,
+            reasoning=selection.reasoning,
+        )
 
     if not (rerank_verdict.selection_found and selected_source_ids):
         return terminal(
@@ -326,10 +362,6 @@ def resolve_recovery(
             rerank_triggered=True,
             rerank_latency_ms=rerank_latency_ms,
         )
-
-    by_chunk_id = {c.chunk.chunk_id: c for c in candidates}
-    evidence_chunks = [by_chunk_id[sid] for sid in selected_source_ids if sid in by_chunk_id]
-    evidence_texts = [c.chunk.text for c in evidence_chunks]
 
     reranked_answer_generated = True
     regenerated_answer_valid = False
