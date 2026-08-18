@@ -11,6 +11,16 @@ import speculative_rag.config  # noqa: F401  # side effect: loads .env so ANTHRO
 
 _MODEL = "claude-haiku-4-5-20251001"
 
+
+def _anthropic_client():
+    # Keep a bounded production timeout. The fallback call makes the helper
+    # compatible with lightweight test doubles that accept no constructor
+    # arguments.
+    try:
+        return anthropic.Anthropic(timeout=30.0)
+    except TypeError:
+        return anthropic.Anthropic()
+
 _PROMPT_TEMPLATE = """You are reviewing an answer produced for a user's query, checking it against \
 its source passage. Evaluate FOUR separate questions independently — do not let one verdict influence \
 another. A verbatim, fully-supported excerpt from the source passage can still fail multiple of these.
@@ -59,7 +69,7 @@ class ReflectVerdict(BaseModel):
 
 
 def check_groundedness_llm(query_text: str, answer_text: str, source_text: str) -> ReflectVerdict:
-    client = anthropic.Anthropic()
+    client = _anthropic_client()
     response = client.messages.parse(
         model=_MODEL,
         max_tokens=2048,
@@ -145,7 +155,7 @@ class RerankVerdict(BaseModel):
 
 
 def rerank_passages_llm(query_text: str, candidates: list[RerankCandidate]) -> RerankVerdict:
-    client = anthropic.Anthropic()
+    client = _anthropic_client()
     candidates_block = "\n".join(f"[{i}] {c.text}" for i, c in enumerate(candidates))
     response = client.messages.parse(
         model=_MODEL,
@@ -206,7 +216,7 @@ class GeneratedAnswer(BaseModel):
 
 
 def generate_answer_llm(query_text: str, evidence_texts: list[str]) -> GeneratedAnswer:
-    client = anthropic.Anthropic()
+    client = _anthropic_client()
     evidence_block = "\n".join(f"- {text}" for text in evidence_texts)
     response = client.messages.parse(
         model=_MODEL,
@@ -239,7 +249,7 @@ def stream_generate_answer_llm(
     answer is streamed to the UI; the completed text is still validated by
     the normal groundedness/relevance checks before it becomes final.
     """
-    client = anthropic.Anthropic()
+    client = _anthropic_client()
     evidence_block = "\n".join(f"- {text}" for text in evidence_texts)
     prompt = _GENERATE_ANSWER_PROMPT_TEMPLATE.format(
         query_text=query_text,
@@ -314,7 +324,7 @@ class RerankAndAnswer(BaseModel):
 
 
 def rerank_and_generate_llm(query_text: str, candidates: list[RerankCandidate]) -> RerankAndAnswer:
-    client = anthropic.Anthropic()
+    client = _anthropic_client()
     candidates_block = "\n".join(f"[{i}] {c.text}" for i, c in enumerate(candidates))
     response = client.messages.parse(
         model=_MODEL,
@@ -388,7 +398,7 @@ class SynthesisVerdict(BaseModel):
 
 
 def synthesize_answer_llm(query_text: str, candidate_texts: list[str]) -> SynthesisVerdict:
-    client = anthropic.Anthropic()
+    client = _anthropic_client()
     candidates_block = "\n".join(f"[{i}] {text}" for i, text in enumerate(candidate_texts))
     response = client.messages.parse(
         model=_MODEL,

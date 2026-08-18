@@ -219,6 +219,38 @@ def _serialize_outcome(outcome) -> dict:
     }
 
 
+def _serialize_recovery_unavailable(pipeline_result, error: Exception) -> dict:
+    """Finish polling instead of leaving the UI stuck when Claude is down."""
+    answer = pipeline_result.answer
+    return {
+        "status": "done",
+        "final_status": "recovery_unavailable",
+        "answer": (
+            {
+                "text": answer.text,
+                "source_passage_ids": [answer.source_passage_id],
+                "answer_engine": "extractive",
+            }
+            if answer is not None
+            else None
+        ),
+        "reason": f"LLM recovery unavailable; showing the fast grounded answer. ({error})",
+        "instrumentation": {
+            "initial_answer_valid": False,
+            "initial_answerable": False,
+            "rerank_triggered": False,
+            "rerank_latency_ms": None,
+            "selected_source_ids": [],
+            "reranked_answer_generated": False,
+            "regenerated_answer_valid": None,
+            "regenerated_answerable": None,
+            "synthesis_triggered": False,
+            "recovery_latency_ms": 0.0,
+        },
+        "pipeline": _serialize_pipeline(pipeline_result),
+    }
+
+
 def _stage_reporter(request_id: str):
     # Called from the background thread resolve_recovery runs on (see
     # asyncio.to_thread below) -- plain dict assignment is safe here since
@@ -244,19 +276,26 @@ def _answer_reporter(request_id: str):
 
 
 async def _run_recovery(request_id: str, query_text: str, pipeline_result) -> None:
-    outcome = await asyncio.to_thread(
-        resolve_recovery,
-        query_text,
-        pipeline_result,
-        on_stage=_stage_reporter(request_id),
-        stream_answer=stream_generate_answer_llm,
-        on_answer_delta=_answer_reporter(request_id),
-        prefilter_enabled=SETTINGS.rerank_prefilter_enabled,
-        prefilter_lexical_top_n=SETTINGS.rerank_prefilter_lexical_top_n,
-        prefilter_retrieval_reserve=SETTINGS.rerank_prefilter_retrieval_reserve,
-        dense_rerank_enabled=SETTINGS.dense_rerank_enabled,
-    )
-    _PENDING_ANSWERS[request_id] = _serialize_outcome(outcome)
+    try:
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise RuntimeError("ANTHROPIC_API_KEY is not configured")
+        outcome = await asyncio.to_thread(
+            resolve_recovery,
+            query_text,
+            pipeline_result,
+            on_stage=_stage_reporter(request_id),
+            stream_answer=stream_generate_answer_llm,
+            on_answer_delta=_answer_reporter(request_id),
+            prefilter_enabled=SETTINGS.rerank_prefilter_enabled,
+            prefilter_lexical_top_n=SETTINGS.rerank_prefilter_lexical_top_n,
+            prefilter_retrieval_reserve=SETTINGS.rerank_prefilter_retrieval_reserve,
+            dense_rerank_enabled=SETTINGS.dense_rerank_enabled,
+        )
+        _PENDING_ANSWERS[request_id] = _serialize_outcome(outcome)
+    except Exception as exc:
+        # A missing/expired API key or a provider timeout must resolve the
+        # request. Otherwise the browser polls "reranking" forever.
+        _PENDING_ANSWERS[request_id] = _serialize_recovery_unavailable(pipeline_result, exc)
 
 
 @app.post("/api/answer", response_model=None)

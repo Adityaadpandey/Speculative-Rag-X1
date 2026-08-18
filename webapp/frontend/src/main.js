@@ -16,6 +16,7 @@ const STATUS_META = {
   insufficient_evidence: { label: "Insufficient Evidence", cls: "warn" },
   ungrounded: { label: "Answer Withheld — Not Grounded", cls: "warn" },
   fallback: { label: "No Verified Answer After Full Recovery", cls: "warn" },
+  recovery_unavailable: { label: "Fast Answer — Verification Unavailable", cls: "warn" },
 };
 
 const state = {
@@ -375,7 +376,7 @@ function renderResult(data) {
   // Badge morph fires together with the answer diff/refusal render below, not
   // before it -- the spec requires the badge to resolve in sync with the
   // diff, not pop in early while the old text is still showing.
-  if (data.final_status === "answered" && data.answer) {
+  if (data.answer) {
     showAnswer(data.answer.text, data.answer.source_passage_ids);
   } else {
     showRefusal(data.reason);
