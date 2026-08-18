@@ -58,7 +58,6 @@ const timelineHandle = initTimeline(timelineRootEl);
 function buildControlSet(containerEl) {
   const set = {
     languageSelect: containerEl.querySelector('[data-role="language-select"]'),
-    strategySelect: containerEl.querySelector('[data-role="strategy-select"]'),
     queryInput: containerEl.querySelector('[data-role="query-input"]'),
     askBtn: containerEl.querySelector('[data-role="ask-btn"]'),
   };
@@ -88,9 +87,9 @@ function populateSelect(selectEl, values, preferred) {
   selectEl.value = values.includes(preferred) ? preferred : (values[0] ?? "");
 }
 
-function refreshStrategiesFor(controls) {
-  const strategies = strategiesByLanguage[controls.languageSelect.value] ?? [];
-  populateSelect(controls.strategySelect, strategies, "native");
+function strategyFor(language) {
+  const strategies = strategiesByLanguage[language] ?? [];
+  return strategies.includes("native") ? "native" : (strategies[0] ?? "native");
 }
 
 async function loadCollections() {
@@ -106,8 +105,6 @@ async function loadCollections() {
 
   for (const controls of controlSets) {
     populateSelect(controls.languageSelect, languages, "en");
-    refreshStrategiesFor(controls);
-    controls.languageSelect.addEventListener("change", () => refreshStrategiesFor(controls));
   }
 
   if (!state.sarvamKeyConfigured) {
@@ -341,7 +338,7 @@ function setAsking(isAsking) {
   for (const controls of controlSets) {
     controls.askBtn.disabled = isAsking;
     controls.askBtnSpinner.hidden = !isAsking;
-    controls.askBtnLabel.textContent = isAsking ? "Asking…" : "Ask";
+    controls.askBtnLabel.textContent = isAsking ? "Asking…" : "Ask →";
   }
 }
 
@@ -359,7 +356,7 @@ async function runQuery(queryText) {
   const controls = activeControlSet();
   let data;
   try {
-    data = await postAnswer({ queryText, language: controls.languageSelect.value, strategy: controls.strategySelect.value });
+    data = await postAnswer({ queryText, language: controls.languageSelect.value, strategy: strategyFor(controls.languageSelect.value) });
   } catch (err) {
     showToast(err instanceof ApiError ? err.message : `query failed: ${err.message}`);
     resultViewEl.hidden = true;
@@ -369,13 +366,11 @@ async function runQuery(queryText) {
 
   if (!state.collapsed) {
     state.collapsed = true;
-    // Carry the hero's actual language/strategy selection into the compact
-    // bar's independent control set -- otherwise it silently reverts to
-    // whatever loadCollections() defaulted it to (en/native) instead of
-    // reflecting the query that was just run.
+    // Carry the hero's actual language selection into the compact bar's
+    // independent control set -- otherwise it silently reverts to whatever
+    // loadCollections() defaulted it to (en) instead of reflecting the
+    // query that was just run.
     compactControls.languageSelect.value = heroControls.languageSelect.value;
-    refreshStrategiesFor(compactControls);
-    compactControls.strategySelect.value = heroControls.strategySelect.value;
     state.activeControls = "compact";
     await collapseHero({ heroEl, compactBarEl });
   }

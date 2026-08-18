@@ -6,28 +6,24 @@
   <title>Speculative RAG</title>
 </head>
 <body>
-  <div id="gradient-mesh" aria-hidden="true">
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
-    <div class="blob blob-3"></div>
-  </div>
+  <div id="gradient-mesh" aria-hidden="true"></div>
 
   <div id="toast-container" aria-live="polite"></div>
 
   <header id="hero">
     <div class="hero-inner">
+      <p class="hero-mark">✦ less noise. more signal.</p>
       <h1 class="hero-title">Speculative RAG</h1>
-      <p class="hero-subtitle">Sub-200ms extractive answers, verified and self-corrected by Claude in the background.</p>
+      <p class="hero-subtitle">Fast answers first. Claude verifies and corrects in the background — always under 200ms to first response.</p>
 
       <div class="hero-controls">
         <label class="field"><span>Language</span><select data-role="language-select"></select></label>
-        <label class="field"><span>Strategy</span><select data-role="strategy-select"></select></label>
       </div>
 
       <div class="hero-query-row glass-panel">
-        <input type="text" data-role="query-input" placeholder="Ask a question..." />
+        <input type="text" data-role="query-input" placeholder="Ask something real..." />
         <button class="ask-btn" data-role="ask-btn">
-          <span class="ask-btn-label">Ask</span>
+          <span class="ask-btn-label">Ask →</span>
           <span class="ask-btn-spinner" hidden></span>
         </button>
       </div>
@@ -35,7 +31,7 @@
       <div class="hero-audio-row">
         <label class="audio-file-label">
           <input type="file" data-role="audio-file" accept="audio/*" />
-          Upload audio
+          + Upload audio
         </label>
         <button class="secondary" data-role="record-btn">Record</button>
         <div class="waveform" data-role="waveform" hidden></div>
@@ -48,10 +44,9 @@
   <div id="compact-bar" class="glass-panel" hidden>
     <span class="compact-logo">Speculative RAG</span>
     <select data-role="language-select"></select>
-    <select data-role="strategy-select"></select>
     <input type="text" data-role="query-input" placeholder="Ask a follow-up..." />
     <button class="ask-btn" data-role="ask-btn">
-      <span class="ask-btn-label">Ask</span>
+      <span class="ask-btn-label">Ask →</span>
       <span class="ask-btn-spinner" hidden></span>
     </button>
   </div>

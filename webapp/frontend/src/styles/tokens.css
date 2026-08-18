@@ -1,68 +1,50 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,600;0,700;0,800;1,600&family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap");
 
 :root {
-  color-scheme: light dark;
-  --font-display: "Space Grotesk", system-ui, sans-serif;
+  color-scheme: dark;
+
+  --font-display: "Bodoni Moda", "Times New Roman", serif;
   --font-body: "Inter", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-mono: "Barlow Condensed", system-ui, sans-serif;
 
-  --fg: #eceef2;
-  --fg-muted: #a1a5ad;
-  --fg-muted-soft: #797d86;
-  --bg: #0a0a10;
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 60px rgba(0, 0, 0, 0.5);
+  /* HH Goa 2026 palette */
+  --hh-forest: #08733f;
+  --hh-forest-deep: #055a32;
+  --hh-yellow: #f4e500;
+  --hh-yellow-soft: #fff06a;
+  --hh-pink: #f31586;
+  --hh-lime: #b7d83d;
+  --hh-cream: #f5eed5;
+  --hh-black: #101010;
 
-  --accent: #9c85ff;
-  --accent-fg: #14121f;
-  --good: #4ade80;
-  --good-bg: rgba(74, 222, 128, 0.14);
-  --warn: #f0b93d;
-  --warn-bg: rgba(240, 185, 61, 0.14);
-  --bad: #f87171;
-  --bad-bg: rgba(248, 113, 113, 0.14);
+  --bg: var(--hh-forest);
+  --bg-deep: var(--hh-forest-deep);
+  --fg: var(--hh-cream);
+  --fg-muted: rgba(245, 238, 213, 0.68);
+  --fg-muted-soft: rgba(245, 238, 213, 0.45);
 
-  --claude-tag-bg: rgba(156, 133, 255, 0.18);
-  --claude-tag-fg: #c3b3ff;
-  --local-tag-bg: rgba(255, 255, 255, 0.08);
-  --local-tag-fg: #a1a5ad;
+  --panel-bg: var(--hh-forest-deep);
+  --panel-border: rgba(245, 238, 213, 0.28);
 
-  --blob-1: #7c3aed;
-  --blob-2: #d946ef;
-  --blob-3: #22d3ee;
+  --accent: var(--hh-yellow);
+  --accent-fg: var(--hh-forest-deep);
+  --good: var(--hh-lime);
+  --good-bg: rgba(183, 216, 61, 0.16);
+  --warn: var(--hh-yellow-soft);
+  --warn-bg: rgba(255, 240, 106, 0.14);
+  --bad: var(--hh-pink);
+  --bad-bg: rgba(243, 21, 134, 0.14);
 
-  --radius-lg: 1.5rem;
-  --radius-md: 1rem;
+  --claude-tag-bg: rgba(243, 21, 134, 0.16);
+  --claude-tag-fg: var(--hh-pink);
+  --local-tag-bg: rgba(245, 238, 213, 0.1);
+  --local-tag-fg: var(--fg-muted);
+
+  --blob-1: var(--hh-lime);
+  --blob-2: var(--hh-pink);
+  --blob-3: var(--hh-yellow);
+
+  --radius-lg: 0px;
+  --radius-md: 0px;
   --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    --fg: #17181c;
-    --fg-muted: #5b6068;
-    --fg-muted-soft: #797d86;
-    --bg: #f2f1f8;
-    --glass-bg: rgba(255, 255, 255, 0.55);
-    --glass-border: rgba(20, 20, 30, 0.08);
-    --glass-shadow: 0 1px 2px rgba(20, 20, 30, 0.05), 0 20px 50px rgba(20, 20, 30, 0.08);
-
-    --accent: #6c4ef5;
-    --accent-fg: #ffffff;
-    --good: #1b8a5a;
-    --good-bg: #e6f7ee;
-    --warn: #9a6b00;
-    --warn-bg: #fdf2df;
-    --bad: #b23b3b;
-    --bad-bg: #fbeaea;
-
-    --claude-tag-bg: #efe9ff;
-    --claude-tag-fg: #6c4ef5;
-    --local-tag-bg: #eef1f4;
-    --local-tag-fg: #5b6068;
-
-    --blob-1: #c4b5fd;
-    --blob-2: #f5d0fe;
-    --blob-3: #a5f3fc;
-  }
 }
