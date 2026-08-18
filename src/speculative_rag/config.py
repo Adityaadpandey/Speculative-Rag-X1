@@ -71,11 +71,12 @@ class Settings(BaseModel):
     reflect_latency_sample_size: int = 30
 
 
-# BCP-47 codes for Sarvam STT, keyed by the {hi, en, ta} set LANGUAGE_SOURCES uses.
+# BCP-47 codes for Sarvam STT, keyed by the language set LANGUAGE_SOURCES uses.
 BCP47_LANGUAGE_CODES: dict[str, str] = {
     "hi": "hi-IN",
     "en": "en-IN",
     "ta": "ta-IN",
+    "ur": "ur-IN",
 }
 
 LANGUAGE_SOURCES: list[LanguageSource] = [
@@ -93,6 +94,12 @@ LANGUAGE_SOURCES: list[LanguageSource] = [
     LanguageSource(
         language="ta",
         parquet_path=REPO_ROOT / "MSMARCO-XI" / "validation" / "tamval.parquet",
+        text_field="Translated_passages",
+    ),
+    # Urdu's standard ISO 639-1 code is "ur" (not "ud").
+    LanguageSource(
+        language="ur",
+        parquet_path=REPO_ROOT / "MSMARCO-XI" / "validation" / "urdval.parquet",
         text_field="Translated_passages",
     ),
 ]

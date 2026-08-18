@@ -8,6 +8,14 @@ class _RecordingQdrantClient:
         _RecordingQdrantClient.last_kwargs = kwargs
 
 
+def test_urdu_is_configured_for_ingestion_and_stt():
+    urdu = next(source for source in config_module.LANGUAGE_SOURCES if source.language == "ur")
+
+    assert urdu.parquet_path.name == "urdval.parquet"
+    assert urdu.text_field == "Translated_passages"
+    assert config_module.BCP47_LANGUAGE_CODES["ur"] == "ur-IN"
+
+
 def test_get_qdrant_client_remote_uses_rest_with_generous_timeout(monkeypatch):
     monkeypatch.setenv("QDRANT_URL", "https://example.cloud.qdrant.io")
     monkeypatch.setenv("QDRANT_API_KEY", "test-key")
