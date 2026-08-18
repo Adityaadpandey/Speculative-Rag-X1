@@ -17,49 +17,66 @@ const recordCountdown = document.getElementById("record-countdown");
 const audioDisabledNote = document.getElementById("audio-disabled-note");
 const resultPanel = document.getElementById("result-panel");
 const outcomeBadge = document.getElementById("outcome-badge");
-const resolvingNote = document.getElementById("resolving-note");
-const resolvingStage = document.getElementById("resolving-stage");
-const resolvingElapsed = document.getElementById("resolving-elapsed");
-const answerBlock = document.getElementById("answer-block");
 const answerText = document.getElementById("answer-text");
 const answerSourceIds = document.getElementById("answer-source-ids");
+const answerSourcesRow = document.getElementById("answer-sources-row");
 const refusalText = document.getElementById("refusal-text");
 const resultReason = document.getElementById("result-reason");
 const latencyTableBody = document.querySelector("#latency-table tbody");
 const totalE2eLatencyMs = document.getElementById("total-e2e-latency-ms");
-const reviewPanel = document.getElementById("review-panel");
-const reviewInitialValid = document.getElementById("review-initial-valid");
-const reviewInitialAnswerable = document.getElementById("review-initial-answerable");
-const rerankPanel = document.getElementById("rerank-panel");
-const rerankLatencyMs = document.getElementById("rerank-latency-ms");
-const rerankSelectedSources = document.getElementById("rerank-selected-sources");
-const rerankAnswerGenerated = document.getElementById("rerank-answer-generated");
-const rerankRegeneratedValid = document.getElementById("rerank-regenerated-valid");
-const rerankRegeneratedAnswerable = document.getElementById("rerank-regenerated-answerable");
-const synthesisPanel = document.getElementById("synthesis-panel");
-const synthesisNote = document.getElementById("synthesis-note");
 const errorBanner = document.getElementById("error-banner");
 
-// Keyed by FinalAnswerStatus, the status of the FINAL validated answer --
-// never the raw fast-path outcome, which can look "answered" from the
-// extractive hot path alone while still being ungrounded or off-target.
-const FINAL_STATUS_LABELS = {
-  answered: "ANSWERED",
-  not_answered: "NOT ANSWERED",
-  ungrounded: "UNGROUNDED",
-  insufficient_evidence: "INSUFFICIENT EVIDENCE",
-  fallback: "FALLBACK — NO VALIDATED ANSWER",
+// Every LLM call in the recovery chain (validate / rerank+regenerate /
+// synthesize) runs on Claude Haiku (see src/speculative_rag/reflect.py
+// _MODEL) -- the fast path above it is pure BM25/embedding retrieval plus
+// extractive span selection and never touches an LLM. The "no LLM" / "Claude
+// Haiku" tags on each timeline step are static since which stage uses an
+// LLM is fixed by the pipeline shape, not something that changes per request.
+const steps = {
+  fast: {
+    el: document.querySelector('[data-step="fast"]'),
+    detail: document.getElementById("step-fast-detail"),
+    time: document.getElementById("step-fast-time"),
+  },
+  verify: {
+    el: document.querySelector('[data-step="verify"]'),
+    detail: document.getElementById("step-verify-detail"),
+    time: document.getElementById("step-verify-time"),
+  },
+  rerank: {
+    el: document.querySelector('[data-step="rerank"]'),
+    detail: document.getElementById("step-rerank-detail"),
+    time: document.getElementById("step-rerank-time"),
+  },
+  synthesis: {
+    el: document.querySelector('[data-step="synthesis"]'),
+    detail: document.getElementById("step-synthesis-detail"),
+    time: document.getElementById("step-synthesis-time"),
+  },
 };
 
-// Keyed by the "stage" field answer_orchestrator.resolve_recovery reports
-// via on_stage(), surfaced live while GET /api/answer/{request_id} is still
-// "resolving" so the wait doesn't read as frozen.
-const STAGE_LABELS = {
-  starting: "validating and recovering in the background",
-  validating: "validating the fast answer",
-  reranking: "reranking passages and regenerating an answer",
-  verifying: "verifying the regenerated answer is grounded",
-  synthesizing: "synthesizing an answer across multiple passages",
+function setStep(name, { state: stepState, detail, time, hidden } = {}) {
+  const step = steps[name];
+  if (hidden !== undefined) step.el.hidden = hidden;
+  if (stepState) {
+    step.el.classList.remove("active", "done", "corrected");
+    step.el.classList.add(stepState);
+  }
+  if (detail !== undefined) step.detail.textContent = detail;
+  if (time !== undefined) step.time.textContent = time;
+}
+
+// Final-status framing: an ungrounded/insufficient-evidence/fallback result
+// is the safety net working as designed (the pipeline declining to guess),
+// not a system failure -- so only a genuinely verified answer gets the
+// "good" (green) treatment. Everything else reads as an amber, informative
+// outcome instead of a red "false".
+const STATUS_META = {
+  answered: { label: "Verified Answer", cls: "good" },
+  not_answered: { label: "No Direct Answer Found", cls: "warn" },
+  insufficient_evidence: { label: "Insufficient Evidence", cls: "warn" },
+  ungrounded: { label: "Answer Withheld — Not Grounded", cls: "warn" },
+  fallback: { label: "No Verified Answer After Full Recovery", cls: "warn" },
 };
 
 function showError(message) {
@@ -117,12 +134,16 @@ async function loadCollections() {
 function resetPanels() {
   clearError();
   resultPanel.hidden = true;
-  reviewPanel.hidden = true;
-  rerankPanel.hidden = true;
-  synthesisPanel.hidden = true;
-  answerBlock.hidden = true;
+  outcomeBadge.hidden = true;
+  answerText.hidden = true;
   refusalText.hidden = true;
+  resultReason.textContent = "";
   latencyTableBody.innerHTML = "";
+  for (const name of Object.keys(steps)) {
+    setStep(name, { state: "pending", detail: "", time: "" });
+  }
+  steps.rerank.el.hidden = true;
+  steps.synthesis.el.hidden = true;
 }
 
 function renderLatencyTable(pipeline) {
@@ -137,29 +158,109 @@ function renderLatencyTable(pipeline) {
   latencyTableBody.appendChild(totalRow);
 }
 
+function renderAnswerBlock(text, sourceIds) {
+  answerText.hidden = false;
+  refusalText.hidden = true;
+  answerText.textContent = text;
+  answerSourcesRow.hidden = false;
+  answerSourceIds.textContent = sourceIds.join(", ") || "none";
+}
+
+function renderRefusalBlock(reason) {
+  answerText.hidden = true;
+  refusalText.hidden = false;
+  answerSourcesRow.hidden = true;
+  refusalText.textContent = reason || "No validated answer could be produced.";
+}
+
+// Whether check_groundedness_llm will run on the fast-path answer at all --
+// it only gets invoked when the fast path itself produced
+// RagOutcome.ANSWERED (see answer_orchestrator.resolve_recovery); for any
+// other fast-path outcome, recovery skips straight to rerank (or ends
+// immediately), so the "verify" timeline step doesn't apply and needs to
+// stay hidden instead of implying a check that never happened.
+function willRunVerify(pipelineOutcome) {
+  return pipelineOutcome === "answered";
+}
+
 // Shown the moment POST /api/answer returns (within the ~200ms latency
 // budget) -- the raw extractive answer, not yet validated. Recovery
 // (validation/rerank/regenerate/synthesis) is still running in the
 // background at this point.
 function renderFastPath(data) {
   resultPanel.hidden = false;
-  resolvingNote.hidden = false;
   outcomeBadge.hidden = true;
-  resultReason.textContent = "";
-  refusalText.hidden = true;
 
+  const totalMs = data.pipeline.total_ms.toFixed(2);
   if (data.fast_answer) {
-    answerBlock.hidden = false;
-    answerText.textContent = data.fast_answer.text;
-    answerSourceIds.textContent = data.fast_answer.source_passage_ids.join(", ") || "none";
+    renderAnswerBlock(data.fast_answer.text, data.fast_answer.source_passage_ids);
+    setStep("fast", {
+      state: "done",
+      detail: `extractive answer found in ${totalMs}ms — verifying now`,
+      time: `${totalMs} ms`,
+    });
   } else {
-    answerBlock.hidden = true;
+    answerText.hidden = true;
+    answerSourcesRow.hidden = true;
+    refusalText.hidden = false;
+    refusalText.textContent = "Checking the retrieved passages for an answer…";
+    setStep("fast", {
+      state: "done",
+      detail: `no confident extractive span in ${totalMs}ms — checking retrieved passages more deeply`,
+      time: `${totalMs} ms`,
+    });
   }
 
   renderLatencyTable(data.pipeline);
   totalE2eLatencyMs.textContent = "…";
-  resolvingStage.textContent = STAGE_LABELS.starting;
-  resolvingElapsed.textContent = "";
+
+  if (willRunVerify(data.pipeline.outcome)) {
+    setStep("verify", {
+      state: "active",
+      hidden: false,
+      detail: "Claude Haiku is checking the answer is grounded, complete, and on-target…",
+      time: "",
+    });
+  } else {
+    setStep("verify", { hidden: true });
+    setStep("rerank", {
+      state: "active",
+      hidden: false,
+      detail: "Claude Haiku is searching every retrieved passage for the evidence…",
+      time: "",
+    });
+  }
+}
+
+// Live progress while GET /api/answer/{request_id} is still "resolving" --
+// stage is one of starting/validating/reranking/verifying/synthesizing, per
+// answer_orchestrator.resolve_recovery's on_stage() calls. "verifying" fires
+// twice (after rerank+regenerate, and after synthesis) so it's routed to
+// whichever of those two steps most recently became active.
+let currentRecoveryPhase = null;
+
+function renderStageProgress(stage) {
+  if (stage === "reranking") {
+    currentRecoveryPhase = "rerank";
+    setStep("rerank", {
+      state: "active",
+      hidden: false,
+      detail: "Claude Haiku is re-ranking retrieved passages and regenerating an answer…",
+    });
+    if (!steps.verify.el.hidden) {
+      setStep("verify", { state: "corrected", detail: "flagged for a closer look — escalating to re-ranking" });
+    }
+  } else if (stage === "synthesizing") {
+    currentRecoveryPhase = "synthesis";
+    setStep("synthesis", {
+      state: "active",
+      hidden: false,
+      detail: "Claude Haiku is synthesizing an answer across multiple passages…",
+    });
+    setStep("rerank", { state: "corrected", detail: "regenerated answer needed more support — escalating to synthesis" });
+  } else if (stage === "verifying" && currentRecoveryPhase) {
+    setStep(currentRecoveryPhase, { detail: "double-checking the new answer is grounded before returning it…" });
+  }
 }
 
 // Shown once GET /api/answer/{request_id} reports status "done" -- the
@@ -167,56 +268,86 @@ function renderFastPath(data) {
 // legitimately be "answered".
 function renderResult(data) {
   resultPanel.hidden = false;
-  resolvingNote.hidden = true;
   outcomeBadge.hidden = false;
-  outcomeBadge.textContent = FINAL_STATUS_LABELS[data.final_status] ?? data.final_status;
-  outcomeBadge.className = `badge badge-${data.final_status}`;
+  const meta = STATUS_META[data.final_status] ?? { label: data.final_status, cls: "warn" };
+  outcomeBadge.textContent = meta.label;
+  outcomeBadge.className = `badge badge-${meta.cls}`;
   resultReason.textContent = data.reason ?? "";
 
   if (data.final_status === "answered" && data.answer) {
-    answerBlock.hidden = false;
-    refusalText.hidden = true;
-    answerText.textContent = data.answer.text;
-    answerSourceIds.textContent = data.answer.source_passage_ids.join(", ") || "none";
+    renderAnswerBlock(data.answer.text, data.answer.source_passage_ids);
   } else {
-    answerBlock.hidden = true;
-    refusalText.hidden = false;
-    refusalText.textContent = data.reason ?? "No validated answer could be produced.";
+    renderRefusalBlock(data.reason);
   }
 
   renderLatencyTable(data.pipeline);
   totalE2eLatencyMs.textContent = data.instrumentation.recovery_latency_ms.toFixed(2);
 
-  renderInstrumentation(data.instrumentation);
+  renderInstrumentation(data.instrumentation, data.final_status);
 }
 
-function renderInstrumentation(instrumentation) {
-  reviewPanel.hidden = false;
-  reviewInitialValid.textContent = instrumentation.initial_answer_valid;
-  reviewInitialAnswerable.textContent = instrumentation.initial_answerable;
-
-  rerankPanel.hidden = !instrumentation.rerank_triggered;
-  if (instrumentation.rerank_triggered) {
-    rerankLatencyMs.textContent = (instrumentation.rerank_latency_ms ?? 0).toFixed(2);
-    rerankSelectedSources.textContent = instrumentation.selected_source_ids.join(", ") || "none";
-    rerankAnswerGenerated.textContent = instrumentation.reranked_answer_generated;
-    rerankRegeneratedValid.textContent = instrumentation.regenerated_answer_valid;
-    rerankRegeneratedAnswerable.textContent = instrumentation.regenerated_answerable;
+function renderInstrumentation(instrumentation, finalStatus) {
+  if (!steps.verify.el.hidden) {
+    if (instrumentation.initial_answer_valid) {
+      setStep("verify", {
+        state: "done",
+        detail: "passed verification on the first pass — grounded, complete, and on-target.",
+      });
+    } else {
+      setStep("verify", {
+        state: "corrected",
+        detail: "the fast answer needed a closer look, so the pipeline automatically escalated to re-ranking.",
+      });
+    }
   }
 
-  synthesisPanel.hidden = !instrumentation.synthesis_triggered;
+  if (instrumentation.rerank_triggered) {
+    const rerankTime = instrumentation.rerank_latency_ms != null ? `${instrumentation.rerank_latency_ms.toFixed(0)} ms` : "";
+    const sourceCount = instrumentation.selected_source_ids.length;
+    if (!instrumentation.reranked_answer_generated || sourceCount === 0) {
+      setStep("rerank", {
+        state: "corrected",
+        hidden: false,
+        detail: "none of the retrieved passages contained the answer — declined rather than guess.",
+        time: rerankTime,
+      });
+    } else if (instrumentation.regenerated_answer_valid) {
+      setStep("rerank", {
+        state: "done",
+        hidden: false,
+        detail: `selected ${sourceCount} source${sourceCount === 1 ? "" : "s"} from the full candidate pool and regenerated a verified answer.`,
+        time: rerankTime,
+      });
+    } else {
+      setStep("rerank", {
+        state: "corrected",
+        hidden: false,
+        detail: `selected ${sourceCount} source${sourceCount === 1 ? "" : "s"}, but the regenerated answer needed further verification.`,
+        time: rerankTime,
+      });
+    }
+  }
+
   if (instrumentation.synthesis_triggered) {
-    synthesisNote.textContent =
-      instrumentation.regenerated_answer_valid === false
-        ? "Regeneration from the reranked evidence failed validation, so multi-passage synthesis ran as a deeper fallback."
-        : "Multi-passage synthesis ran as part of answer recovery.";
+    if (finalStatus === "answered") {
+      setStep("synthesis", {
+        state: "done",
+        hidden: false,
+        detail: "combined evidence across multiple passages to produce a verified answer.",
+      });
+    } else {
+      setStep("synthesis", {
+        state: "corrected",
+        hidden: false,
+        detail: "no combination of retrieved passages fully supported an answer — declined rather than guess.",
+      });
+    }
   }
 }
 
 const POLL_INTERVAL_MS = 700;
 
 async function pollForFinalAnswer(requestId) {
-  const pollStart = performance.now();
   for (;;) {
     let response;
     let data;
@@ -235,21 +366,17 @@ async function pollForFinalAnswer(requestId) {
       renderResult(data);
       return;
     }
-    resolvingStage.textContent = STAGE_LABELS[data.stage] ?? STAGE_LABELS.starting;
-    resolvingElapsed.textContent = `${((performance.now() - pollStart) / 1000).toFixed(1)}s`;
+    renderStageProgress(data.stage);
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
 }
 
 async function runQuery(queryText) {
   resetPanels();
+  currentRecoveryPhase = null;
   if (!queryText.trim()) {
     return;
   }
-
-  resultPanel.hidden = false;
-  resolvingNote.hidden = false;
-  outcomeBadge.hidden = true;
 
   let response;
   let data;

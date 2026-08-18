@@ -1,15 +1,15 @@
-"""Async LLM-based groundedness check (spec: rho_Self-reflect). Purely
-additive, non-hot-path: never imported by pipeline.py, never consulted
-inside run_pipeline, never changes RagOutcome. A secondary, informational
-verdict on whether an already-returned ANSWERED result is actually
-grounded in its source passage, using Claude Sonnet 5 structured output."""
+"""Async LLM-based groundedness check. Purely additive, non-hot-path: never
+imported by pipeline.py, never consulted inside run_pipeline, never changes
+RagOutcome. It's a secondary, informational verdict on whether an
+already-returned ANSWERED result is actually grounded in its source
+passage, using Claude Haiku structured output."""
 
 import anthropic
 from pydantic import BaseModel
 
 import speculative_rag.config  # noqa: F401  # side effect: loads .env so ANTHROPIC_API_KEY is set before anthropic.Anthropic() reads it
 
-_MODEL = "claude-sonnet-5"
+_MODEL = "claude-haiku-4-5-20251001"
 
 _PROMPT_TEMPLATE = """You are reviewing an answer produced for a user's query, checking it against \
 its source passage. Evaluate FOUR separate questions independently — do not let one verdict influence \

@@ -8,80 +8,90 @@
 </head>
 <body>
   <main>
-    <h1>Speculative RAG</h1>
+    <header id="page-header">
+      <h1>Speculative RAG</h1>
+      <p class="subtitle">Sub-200ms extractive answers, verified and self-corrected by Claude in the background.</p>
+    </header>
 
-    <section id="controls">
+    <section id="controls" class="panel">
       <label>
-        Language
+        <span>Language</span>
         <select id="language-select"></select>
       </label>
       <label>
-        Strategy
+        <span>Strategy</span>
         <select id="strategy-select"></select>
       </label>
     </section>
 
-    <section id="text-input-row">
-      <input type="text" id="query-text" placeholder="Type a question...">
-      <button id="ask-btn">Ask</button>
-    </section>
-
-    <section id="audio-input-row">
-      <label>
-        <input type="file" id="audio-file" accept="audio/*">
-        Upload audio
-      </label>
-      <button id="record-btn">Record</button>
-      <span id="record-countdown"></span>
-      <p id="audio-disabled-note" hidden>SARVAM_API_KEY not set — text queries only</p>
-    </section>
-
-    <section id="result-panel" hidden>
-      <h2>Result</h2>
-      <span id="outcome-badge" class="badge"></span>
-      <div id="resolving-note">
-        <span id="resolving-spinner" class="spinner" aria-hidden="true"></span>
-        fast answer shown below (&lt;200ms) — <span id="resolving-stage">validating and recovering in the background</span>...
-        <span id="resolving-elapsed" class="meta"></span>
+    <section id="input-panel" class="panel">
+      <div id="text-input-row">
+        <input type="text" id="query-text" placeholder="Ask a question...">
+        <button id="ask-btn">Ask</button>
       </div>
-      <div id="answer-block" hidden>
+
+      <div id="audio-input-row">
+        <label id="audio-file-label">
+          <input type="file" id="audio-file" accept="audio/*">
+          Upload audio
+        </label>
+        <button id="record-btn" class="secondary">Record</button>
+        <span id="record-countdown"></span>
+        <p id="audio-disabled-note" hidden>SARVAM_API_KEY not set — text queries only</p>
+      </div>
+    </section>
+
+    <section id="result-panel" class="panel" hidden>
+      <div id="answer-card">
+        <span id="outcome-badge" class="badge"></span>
         <p id="answer-text"></p>
-        <p class="meta">sources: <span id="answer-source-ids"></span></p>
+        <p id="refusal-text" hidden></p>
+        <p class="meta" id="answer-sources-row">sources: <span id="answer-source-ids"></span></p>
+        <p class="meta" id="result-reason"></p>
       </div>
-      <p id="refusal-text" hidden></p>
-      <p class="meta" id="result-reason"></p>
-      <table id="latency-table">
-        <tbody></tbody>
-      </table>
-      <p class="meta">async recovery latency (validation/rerank/regenerate/synthesis — not counted against the 200ms SLA): <span id="total-e2e-latency-ms"></span> ms</p>
-    </section>
 
-    <section id="review-panel" hidden>
-      <h2>Initial answer validation</h2>
-      <p class="meta">
-        valid: <strong id="review-initial-valid"></strong> ·
-        answerable: <strong id="review-initial-answerable"></strong>
-      </p>
-    </section>
+      <div id="timeline">
+        <div class="timeline-step" data-step="fast">
+          <span class="step-icon">⚡</span>
+          <div class="step-body">
+            <div class="step-title">Fast answer retrieved <span class="engine-tag engine-local">no LLM</span></div>
+            <div class="step-detail" id="step-fast-detail"></div>
+          </div>
+          <span class="step-time" id="step-fast-time"></span>
+        </div>
+        <div class="timeline-step" data-step="verify">
+          <span class="step-icon">◐</span>
+          <div class="step-body">
+            <div class="step-title">Verifying accuracy <span class="engine-tag engine-claude">Claude Haiku</span></div>
+            <div class="step-detail" id="step-verify-detail">checking the answer is grounded, complete, and on-target...</div>
+          </div>
+          <span class="step-time" id="step-verify-time"></span>
+        </div>
+        <div class="timeline-step" data-step="rerank" hidden>
+          <span class="step-icon">◐</span>
+          <div class="step-body">
+            <div class="step-title">Re-ranking evidence &amp; regenerating <span class="engine-tag engine-claude">Claude Haiku</span></div>
+            <div class="step-detail" id="step-rerank-detail"></div>
+          </div>
+          <span class="step-time" id="step-rerank-time"></span>
+        </div>
+        <div class="timeline-step" data-step="synthesis" hidden>
+          <span class="step-icon">◐</span>
+          <div class="step-body">
+            <div class="step-title">Synthesizing across passages <span class="engine-tag engine-claude">Claude Haiku</span></div>
+            <div class="step-detail" id="step-synthesis-detail"></div>
+          </div>
+          <span class="step-time" id="step-synthesis-time"></span>
+        </div>
+      </div>
 
-    <section id="rerank-panel" hidden>
-      <h2>LLM rerank + regeneration</h2>
-      <p class="meta">Only runs when the initial answer fails validation — async, not counted against the 200ms SLA. The selected evidence below is what the final answer was regenerated from.</p>
-      <p class="meta">
-        latency: <span id="rerank-latency-ms"></span> ms ·
-        selected sources: <span id="rerank-selected-sources"></span>
-      </p>
-      <p class="meta">
-        answer regenerated: <span id="rerank-answer-generated"></span> ·
-        regenerated answer valid: <span id="rerank-regenerated-valid"></span> ·
-        regenerated answerable: <span id="rerank-regenerated-answerable"></span>
-      </p>
-    </section>
-
-    <section id="synthesis-panel" hidden>
-      <h2>Multi-passage synthesis</h2>
-      <p class="meta">Deeper fallback used when regeneration from the reranked evidence still failed validation — synthesizes across the full candidate pool instead of guessing.</p>
-      <p id="synthesis-note" class="meta"></p>
+      <details id="details-disclosure">
+        <summary>Full pipeline breakdown</summary>
+        <table id="latency-table">
+          <tbody></tbody>
+        </table>
+        <p class="meta">verification latency (runs async, after the fast answer is already shown — never counted against the 200ms SLA): <span id="total-e2e-latency-ms"></span> ms</p>
+      </details>
     </section>
 
     <p id="error-banner" class="error" hidden></p>

@@ -64,7 +64,7 @@ def test_check_groundedness_llm_calls_sdk_with_expected_shape(monkeypatch):
     assert verdict.grounded is False
     assert verdict.complete is False
     assert verdict.relevant is True
-    assert captured["model"] == "claude-sonnet-5"
+    assert captured["model"] == "claude-haiku-4-5-20251001"
     assert captured["output_format"] is ReflectVerdict
     joined = " ".join(m["content"] for m in captured["messages"])
     assert "what country is Paris in" in joined
@@ -138,7 +138,7 @@ def test_rerank_passages_llm_calls_sdk_with_expected_shape(monkeypatch):
 
     assert verdict.selected_sources == [SelectedSource(source_id="capital", relevance_score=0.87)]
     assert verdict.answerable is True
-    assert captured["model"] == "claude-sonnet-5"
+    assert captured["model"] == "claude-haiku-4-5-20251001"
     joined = " ".join(m["content"] for m in captured["messages"])
     assert "what is the capital of France" in joined
     assert "[0] Paris has many museums." in joined
@@ -267,7 +267,7 @@ def test_generate_answer_llm_calls_sdk_with_expected_shape(monkeypatch):
 
     assert answer.answerable is True
     assert "atomic bomb" in answer.answer_text
-    assert captured["model"] == "claude-sonnet-5"
+    assert captured["model"] == "claude-haiku-4-5-20251001"
     assert captured["output_format"] is GeneratedAnswer
     joined = " ".join(m["content"] for m in captured["messages"])
     assert "What was the immediate impact of the success of the Manhattan Project?" in joined
@@ -346,7 +346,7 @@ def test_rerank_and_generate_llm_calls_sdk_with_expected_shape(monkeypatch):
     assert verdict.selection_found is True
     assert verdict.answerable is True
     assert verdict.answer_text == "The capital of France is Paris."
-    assert captured["model"] == "claude-sonnet-5"
+    assert captured["model"] == "claude-haiku-4-5-20251001"
     assert captured["output_format"] is _RerankAndGenerateParsed
     joined = " ".join(m["content"] for m in captured["messages"])
     assert "what is the capital of France" in joined
@@ -469,7 +469,7 @@ def test_synthesize_answer_llm_calls_sdk_with_expected_shape(monkeypatch):
 
     assert verdict.answerable is True
     assert verdict.source_indices == [0, 1]
-    assert captured["model"] == "claude-sonnet-5"
+    assert captured["model"] == "claude-haiku-4-5-20251001"
     assert captured["output_format"] is SynthesisVerdict
     joined = " ".join(m["content"] for m in captured["messages"])
     assert "when was the company founded and when did it ipo" in joined
