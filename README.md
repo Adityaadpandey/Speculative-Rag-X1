@@ -2,7 +2,7 @@
 
 A retrieval-augmented QA system over [`ai4bharat/MSMARCO-XI`](https://huggingface.co/datasets/ai4bharat/MSMARCO-XI) (MS MARCO machine-translated into 14 Indic languages), scoped to Hindi, English, and Tamil. Voice query → Sarvam STT → BM25 sparse retrieval (Qdrant) → extractive answer, all inside a **<200ms hot-path SLA**, with optional async LLM enhancements (groundedness check, rerank, multi-passage synthesis) layered on top and reported separately.
 
-Full design rationale — language scoping, STT provider choice, the latency budget breakdown, chunking-strategy comparison, and the guardrail split — is in [`spec.md`](spec.md).
+Full design rationale — language scoping, STT provider choice, the latency budget breakdown, chunking-strategy comparison, and the guardrail split — is in `spec.md` (kept locally, not tracked in this repo).
 
 ## How it works
 
@@ -38,8 +38,7 @@ voice/text query
 | `webapp/` | FastAPI app (`main.py`) + static frontend (`static/`) serving the pipeline over HTTP |
 | `scripts/` | CLIs for ingestion, interactive querying, and eval (recall@k, latency, answer quality, embedding-model A/B, rerank/synthesis recovery) |
 | `tests/` | pytest suite covering every module above |
-| `results/` | Eval outputs (recall@k per chunking strategy, latency percentiles, answer-quality reports) |
-| `spec.md` | The technical plan this project implements |
+| `results/` | Eval outputs (recall@k per chunking strategy, latency percentiles, answer-quality reports) — local only, not tracked |
 
 ## Setup
 
