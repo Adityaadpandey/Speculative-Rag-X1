@@ -22,9 +22,35 @@ from speculative_rag.schemas import Chunk, Passage
 # second branch, so this is a no-op for non-Latin text.
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?।])\s+|(?<=[.!?।])(?=[A-Z])")
 
+# _SENTENCE_SPLIT_RE has no abbreviation awareness, so "Dr. Smith arrived."
+# would otherwise split into "Dr." / "Smith arrived." -- protect each known
+# abbreviation's period with a sentinel before splitting, then restore it
+# after. A NUL byte is used (not a space) because it's the one character
+# guaranteed not to already appear in real text, so the restore step is
+# unambiguous even for adjacent abbreviations ("Mr. and Mrs. Smith").
+# English/Latin-script only -- Devanagari/Tamil have no period-abbreviation
+# convention, so this is a no-op for those scripts by construction (none of
+# these substrings occur in non-Latin text).
+_ABBREVIATIONS = (
+    "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "St.", "Jr.", "Sr.", "vs.",
+    "approx.", "e.g.", "i.e.", "etc.", "U.S.", "U.K.", "No.",
+)
+_ABBREVIATION_SENTINEL = "\x00"
+
+
+def _protect_abbreviations(text: str) -> str:
+    for abbr in _ABBREVIATIONS:
+        text = text.replace(abbr, abbr.replace(".", _ABBREVIATION_SENTINEL))
+    return text
+
+
+def _restore_abbreviations(text: str) -> str:
+    return text.replace(_ABBREVIATION_SENTINEL, ".")
+
 
 def split_sentences(text: str) -> list[str]:
-    sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(text) if s.strip()]
+    protected = _protect_abbreviations(text)
+    sentences = [_restore_abbreviations(s).strip() for s in _SENTENCE_SPLIT_RE.split(protected) if s.strip()]
     return sentences or [text]
 
 

@@ -86,6 +86,44 @@ def test_chunk_sliding_window_rejects_overlap_not_smaller_than_window():
         chunk_sliding_window(_passage("some text"), window_words=20, overlap_words=20)
 
 
+def test_split_sentences_protects_single_abbreviation():
+    assert split_sentences("Dr. Smith arrived.") == ["Dr. Smith arrived."]
+
+
+def test_split_sentences_protects_adjacent_abbreviations():
+    assert split_sentences("Mr. and Mrs. Smith left.") == ["Mr. and Mrs. Smith left."]
+
+
+def test_split_sentences_protects_lowercase_abbreviations():
+    assert split_sentences("e.g. this is common.") == ["e.g. this is common."]
+
+
+def test_split_sentences_protects_multi_period_abbreviation():
+    assert split_sentences("The U.S. government announced today.") == ["The U.S. government announced today."]
+
+
+def test_split_sentences_protects_no_abbreviation():
+    assert split_sentences("See No. 5 for details.") == ["See No. 5 for details."]
+
+
+def test_split_sentences_decimal_numbers_already_safe():
+    # Regression lock-in: the whitespace branch requires \s+ after the
+    # punctuation and the uppercase-lookahead branch requires an uppercase
+    # Latin letter immediately after -- neither is satisfied by a digit, so
+    # this was already safe before the abbreviation fix and must stay safe.
+    assert split_sentences("The score was 3.14 exactly.") == ["The score was 3.14 exactly."]
+
+
+def test_split_sentences_protects_st_abbreviation():
+    assert split_sentences("St. Louis is a city.") == ["St. Louis is a city."]
+
+
+def test_split_sentences_still_splits_real_boundary_after_abbreviation():
+    # The protect/split/restore fix must not swallow a genuine sentence
+    # boundary that happens to follow an abbreviation.
+    assert split_sentences("Dr. Smith arrived. He was late.") == ["Dr. Smith arrived.", "He was late."]
+
+
 def test_chunk_metadata_aware_matches_native_boundaries_but_tags_strategy():
     p = _passage("A short passage.")
     native = chunk_native(p)[0]
