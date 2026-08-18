@@ -346,7 +346,13 @@ function setAsking(isAsking) {
 }
 
 async function runQuery(queryText) {
-  if (!queryText.trim()) return;
+  if (!queryText.trim()) {
+    // transcribeAndQuery() may have already set the spinner active before
+    // calling us (e.g. a silent recording producing an empty transcript) --
+    // clear it here so the Ask button doesn't stay stuck spinning forever.
+    setAsking(false);
+    return;
+  }
   setAsking(true);
   resetResultView();
 
