@@ -369,6 +369,13 @@ async function runQuery(queryText) {
 
   if (!state.collapsed) {
     state.collapsed = true;
+    // Carry the hero's actual language/strategy selection into the compact
+    // bar's independent control set -- otherwise it silently reverts to
+    // whatever loadCollections() defaulted it to (en/native) instead of
+    // reflecting the query that was just run.
+    compactControls.languageSelect.value = heroControls.languageSelect.value;
+    refreshStrategiesFor(compactControls);
+    compactControls.strategySelect.value = heroControls.strategySelect.value;
     state.activeControls = "compact";
     await collapseHero({ heroEl, compactBarEl });
   }
@@ -411,8 +418,14 @@ audioFileInputEl.addEventListener("change", () => {
 const audioRecorder = createAudioRecorder({
   waveformEl,
   countdownEl: recordCountdownEl,
-  onStop: (blob, filename) => transcribeAndQuery(blob, filename),
-  onError: (err) => showToast(`microphone access failed: ${err.message}`),
+  onStop: (blob, filename) => {
+    recordBtnEl.textContent = "Record";
+    transcribeAndQuery(blob, filename);
+  },
+  onError: (err) => {
+    recordBtnEl.textContent = "Record";
+    showToast(`microphone access failed: ${err.message}`);
+  },
 });
 
 recordBtnEl.addEventListener("click", () => {
