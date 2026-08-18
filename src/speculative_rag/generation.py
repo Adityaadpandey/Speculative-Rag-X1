@@ -7,6 +7,33 @@ from speculative_rag.chunking import split_sentences
 from speculative_rag.pipeline_schemas import ScoredChunk
 from speculative_rag.text_utils import tokenize
 
+# Some passages in the source corpus repeat their own opening text later in
+# the same passage -- glued on with no separating whitespace and missing its
+# first character (e.g. a passage whose text is "The most visited ...
+# Germany." followed immediately, mid-word, by "he most visited ...
+# Germany." again). That's a corpus-ingestion artifact, not real content,
+# and it corrupts extractive answers directly: without stripping it,
+# select_answer_span can hand back a sentence that's literally two copies of
+# itself stitched together.
+_DUPLICATE_TAIL_PROBE_LEN = 30
+
+
+def _strip_duplicate_tail(text: str) -> str:
+    """Look for a long, exact repeat of the passage's own opening (dropping
+    its first character, which is the corruption pattern we've actually
+    seen -- or, failing that, an exact repeat with no character dropped) and
+    cut the passage off right before it. The probe is long enough that an
+    accidental match on ordinary prose is basically impossible, so this only
+    ever fires on the real corruption."""
+    if len(text) < _DUPLICATE_TAIL_PROBE_LEN * 3:
+        return text
+    for drop in (1, 0):
+        probe = text[drop : drop + _DUPLICATE_TAIL_PROBE_LEN]
+        idx = text.find(probe, _DUPLICATE_TAIL_PROBE_LEN)
+        if idx != -1:
+            return text[:idx].rstrip()
+    return text
+
 
 def select_answer_span(query_text: str, passage_text: str) -> str | None:
     """Return the sentence in the passage with the most token overlap with the
@@ -34,6 +61,7 @@ def select_answer_span(query_text: str, passage_text: str) -> str | None:
     ties toward the later sentence: setup-then-consequence is the dominant
     ordering for this kind of query, so the later sentence is the better
     default guess when overlap can't decide."""
+    passage_text = _strip_duplicate_tail(passage_text)
     sentences = split_sentences(passage_text)
     if len(sentences) <= 1:
         return passage_text.strip()

@@ -81,3 +81,29 @@ def test_select_span_falls_back_to_overlap_when_no_candidate_satisfies_type():
     passage = "The card requires excellent credit. Approval also depends on your income."
     span = select_answer_span("what credit score do you need for the card", passage)
     assert span == "The card requires excellent credit."
+
+
+def test_select_span_strips_duplicate_tail_corruption():
+    # Real corpus artifact: some passages contain their own opening text
+    # repeated later in the same passage, glued on with no separating
+    # whitespace and missing its first character (e.g. a live "en_native"
+    # passage whose text ended "...Germany.Alphabetical list of countries in
+    # Europe.he most visited travel destination..." -- its own opening
+    # sentence reappearing with the leading "T" dropped). Without stripping
+    # it, the extracted span would be the sentence stitched to a mangled
+    # copy of itself instead of a clean, single answer.
+    original = "The capital of Ruritania is Strelsauville, a scenic city on the northern bank of the river Endar. "
+    passage = original + original[1:]
+    span = select_answer_span("what is the capital of Ruritania", passage)
+    assert span == original.strip()
+    assert span.count("Strelsauville") == 1
+
+
+def test_select_span_splits_sentence_glued_to_next_by_missing_space():
+    # Companion corpus artifact: real sentence boundaries sometimes lose
+    # their separating space (e.g. "...Germany.Alphabetical list...").
+    # split_sentences must still isolate the query-relevant sentence rather
+    # than returning it merged with an unrelated trailing clause.
+    passage = "The capital of Ruritania is Strelsau.Alphabetical list of Zendan cities follows."
+    span = select_answer_span("what is the capital of Ruritania", passage)
+    assert span == "The capital of Ruritania is Strelsau."

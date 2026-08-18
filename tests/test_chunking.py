@@ -46,6 +46,24 @@ def test_split_sentences_handles_devanagari_danda():
     assert len(sentences) == 2
 
 
+def test_split_sentences_splits_on_missing_space_before_capital():
+    # Corpus artifact: some passages lose the space at a sentence boundary
+    # (e.g. "...Germany.Alphabetical list..."). Without also splitting on
+    # punctuation directly followed by an uppercase letter, the two
+    # sentences stay glued together and an irrelevant trailing clause leaks
+    # into whatever span gets extracted from the first one.
+    sentences = split_sentences("First sentence ends here.Second sentence starts here.")
+    assert sentences == ["First sentence ends here.", "Second sentence starts here."]
+
+
+def test_split_sentences_missing_space_is_noop_for_devanagari():
+    # Devanagari/Tamil have no letter case, so the missing-space-before-
+    # capital heuristic must never fire there -- it would have nothing
+    # meaningful to key off and shouldn't introduce spurious splits.
+    sentences = split_sentences("यह पहला वाक्य है।यह दूसरा वाक्य है।")
+    assert len(sentences) == 1
+
+
 def test_chunk_sentence_aware_short_passage_equals_native():
     short = _passage("One short sentence.")
     chunks = chunk_sentence_aware(short, max_words=40, overlap_sentences=1)

@@ -10,7 +10,17 @@ import re
 
 from speculative_rag.schemas import Chunk, Passage
 
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?।])\s+")
+# The whitespace branch is the normal case. The second branch (punctuation
+# immediately followed by an uppercase Latin letter, no whitespace) exists
+# because some passages in the source corpus have sentence boundaries where
+# the separating space got dropped (e.g. "...Germany.Alphabetical list..."
+# -- two real sentences glued together). Without it, split_sentences treats
+# the glued-on text as part of the previous sentence, which lets an
+# irrelevant (or, worse, corrupted-duplicate -- see _strip_duplicate_tail in
+# generation.py) trailing clause leak into whatever span gets extracted.
+# Scripts without letter case (Devanagari, Tamil, ...) never match the
+# second branch, so this is a no-op for non-Latin text.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?।])\s+|(?<=[.!?।])(?=[A-Z])")
 
 
 def split_sentences(text: str) -> list[str]:
