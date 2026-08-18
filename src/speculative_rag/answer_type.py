@@ -24,9 +24,9 @@ _YESNO_PATTERN = re.compile(
 # it fixes.
 _NUMERIC_KEYWORDS = (
     # English
-    "how many", "how much", "how old", "what year", "which year", "what date",
-    "weight", "height", "score", "temperature", "price", "cost", "distance",
-    "population", "percentage", "speed", "size", "length", "width", "depth",
+    "how many", "how much", "how old", "what age", "what year", "which year", "what date",
+    "age", "weight", "height", "score", "temperature", "price", "cost", "distance",
+    "population", "percentage", "speed", "size", "length", "width", "depth", "area",
     # Hindi
     "कितने", "कितना", "कितनी", "किस वर्ष", "कौन से वर्ष", "कौन सी तारीख",
     "वजन", "स्कोर", "तापमान", "कीमत", "मूल्य", "दूरी", "जनसंख्या", "प्रतिशत",
@@ -55,13 +55,25 @@ _LOCATION_MARKER_WORDS = {
     "located", "situated", "border", "bordered", "borders", "bordering",
     "coast", "coastal", "island", "continent", "peninsula", "region",
     "province", "territory", "northwest", "northeast", "southwest", "southeast",
-    "north", "south", "east", "west",
+    "north", "south", "east", "west", "near",
     # Hindi
     "स्थित", "सीमा", "तट", "द्वीप", "महाद्वीप", "क्षेत्र", "उत्तर", "दक्षिण", "पूर्व", "पश्चिम",
     # Tamil
     "அமைந்துள்ளது", "எல்லை", "கடற்கரை", "தீவு", "கண்டம்", "பகுதி", "வடக்கு", "தெற்கு", "கிழக்கு", "மேற்கு",
 }
-_LOCATION_PHRASE_MARKERS = ("in the", "on the", "near", "capital of")
+# Deliberately excludes bare "in the"/"on the" -- generic English
+# prepositional phrases that show up in tons of sentences with nothing to
+# do with location (e.g. "housed in the Lighthouse Keeper's Cottage"),
+# which let an off-topic candidate pass this gate and beat the actually-
+# correct passage in production. "Goa is a state in the south of India"
+# (the case this list was meant to catch) is already covered by the
+# _LOCATION_MARKER_WORDS token check above via "south" -- no test case
+# needs the bare preposition. "near" moved to _LOCATION_MARKER_WORDS above
+# (word-boundary token match) rather than living here, since a bare
+# substring check matched it inside unrelated words like "nearby" --
+# real production regression: "...the Shearers Hall of Fame is nearby"
+# false-positived and beat the actually-correct passage.
+_LOCATION_PHRASE_MARKERS = ("capital of",)
 
 
 def expected_answer_type(query_text: str) -> str | None:

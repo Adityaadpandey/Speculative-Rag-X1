@@ -38,6 +38,11 @@ answer the query, or is it missing a necessary part of the answer?
 4. relevant (relevance): Is the answer focused on the query, rather than mostly consisting of \
 surrounding context, tangents, or information unrelated to what was asked?
 
+For completeness, do not accept a bare restatement such as "India is a peninsula" when the source \
+also explains what that means or names the surrounding seas. For "how", "why", and "what does X \
+mean" questions, the answer must include the explanatory relationship and key supporting details \
+present in the source.
+
 These four verdicts are independent: an answer can be grounded but not answer the query, can answer \
 the query but include an unsupported claim, can answer the query yet be incomplete, or any other \
 combination — including all pass or all fail.
@@ -188,8 +193,10 @@ Instructions:
 Answer the question directly using only the evidence above.
 Do not add unsupported facts, and do not invent anything not present in the evidence.
 Do not answer a different but related question -- answer exactly what was asked.
-If the evidence does not answer the question, say so explicitly and set answerable to false.
-Keep the answer concise and direct (one or two sentences)."""
+For "how", "why", and definition questions, do not merely repeat the premise. Include the explanation
+and key supporting details stated in the evidence (for example, named boundaries or causes). If the
+evidence does not answer the question, say so explicitly and set answerable to false.
+Keep the answer concise but complete (one or two sentences)."""
 
 
 class GeneratedAnswer(BaseModel):
@@ -247,9 +254,11 @@ selection and set selection_found to false -- do not force a selection just beca
 
 Step 2 -- answer: if step 1 found relevant evidence, answer the question directly using only that evidence. Do \
 not add unsupported facts, do not invent anything not present in the evidence, and do not answer a different but \
-related question -- answer exactly what was asked. Keep the answer concise and direct (one or two sentences). If \
-the selected evidence turns out not to actually answer the question, or step 1 found nothing, set answerable to \
-false and leave answer_text empty rather than guessing.
+related question -- answer exactly what was asked. For "how", "why", and definition questions, do not \
+merely repeat the premise; include the explanation and key supporting details in the selected evidence. \
+Keep the answer concise but complete (one or two sentences). If the selected evidence turns out not to \
+actually answer the question, or step 1 found nothing, set answerable to false and leave answer_text empty \
+rather than guessing.
 
 Give a brief one-sentence reasoning covering both the selection and the answer."""
 
@@ -334,8 +343,9 @@ First decide: do these passages, taken together, contain enough information to a
 
 If yes: write a concise answer (one or two sentences) that states the specific fact the question asks \
 for. Synthesize from the relevant parts of the passages — do not copy an entire passage verbatim, and \
-do not include information irrelevant to the question. List the 0-based indices of the passages you \
-actually used.
+do not include information irrelevant to the question. For "how", "why", and definition questions, \
+include the explanation and key supporting details rather than only restating the premise. List the \
+0-based indices of the passages you actually used.
 
 If no: do not guess or invent an answer from general knowledge. Set answerable=false, leave \
 answer_text empty, and briefly explain what information is missing."""

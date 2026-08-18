@@ -20,23 +20,37 @@
         <label class="field"><span>Language</span><select data-role="language-select"></select></label>
       </div>
 
-      <div class="hero-query-row glass-panel">
+      <div class="hero-voice">
+        <button class="record-btn-wide" data-role="record-btn" aria-label="Record a question">
+          <svg class="mic-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" fill="currentColor"/>
+            <path d="M19 11a7 7 0 0 1-14 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M12 18v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M8.5 21h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span class="record-btn-label" data-role="record-btn-label">Start Recording</span>
+          <div class="waveform" data-role="waveform" hidden></div>
+        </button>
+        <span class="record-countdown" data-role="record-countdown"></span>
+        <div class="transcript-preview glass-panel" data-role="transcript-preview" hidden>
+          <span class="transcript-preview-label">Transcript</span>
+          <p class="transcript-preview-text" data-role="transcript-preview-text"></p>
+        </div>
+        <label class="audio-file-label">
+          <input type="file" data-role="audio-file" accept="audio/*" />
+          + Upload audio
+        </label>
+        <p class="audio-disabled-note" data-role="audio-disabled-note" hidden>SARVAM_API_KEY not set — voice unavailable, type your question below</p>
+      </div>
+
+      <p class="voice-divider">or type your question</p>
+
+      <div class="hero-query-row hero-query-row--secondary glass-panel">
         <input type="text" data-role="query-input" placeholder="Ask something real..." />
         <button class="ask-btn" data-role="ask-btn">
           <span class="ask-btn-label">Ask →</span>
           <span class="ask-btn-spinner" hidden></span>
         </button>
-      </div>
-
-      <div class="hero-audio-row">
-        <label class="audio-file-label">
-          <input type="file" data-role="audio-file" accept="audio/*" />
-          + Upload audio
-        </label>
-        <button class="secondary" data-role="record-btn">Record</button>
-        <div class="waveform" data-role="waveform" hidden></div>
-        <span class="record-countdown" data-role="record-countdown"></span>
-        <p class="audio-disabled-note" data-role="audio-disabled-note" hidden>SARVAM_API_KEY not set — text queries only</p>
       </div>
     </div>
   </header>
@@ -44,6 +58,15 @@
   <div id="compact-bar" class="glass-panel" hidden>
     <span class="compact-logo">Speculative RAG</span>
     <select data-role="language-select"></select>
+    <button class="mic-btn mic-btn-sm" data-role="record-btn" aria-label="Record a question">
+      <svg class="mic-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" fill="currentColor"/>
+        <path d="M19 11a7 7 0 0 1-14 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M12 18v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M8.5 21h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <span class="record-countdown" data-role="record-countdown"></span>
     <input type="text" data-role="query-input" placeholder="Ask a follow-up..." />
     <button class="ask-btn" data-role="ask-btn">
       <span class="ask-btn-label">Ask →</span>
@@ -52,7 +75,8 @@
   </div>
 
   <main id="result-view" hidden>
-    <section class="answer-card glass-panel" data-role="answer-card">
+    <div class="result-main-column">
+      <section class="answer-card glass-panel" data-role="answer-card">
       <span class="badge" data-role="outcome-badge" hidden></span>
       <div class="answer-skeleton" data-role="answer-skeleton">
         <div class="skeleton-line w-90"></div>
@@ -112,7 +136,20 @@
       <summary>Full pipeline breakdown</summary>
       <table class="latency-table"><tbody data-role="latency-table-body"></tbody></table>
       <p class="meta">verification latency (runs async, after the fast answer is already shown — never counted against the 200ms SLA): <span data-role="total-e2e-latency-ms"></span> ms</p>
-    </details>
+      </details>
+    </div>
+
+    <aside class="retrieval-panel glass-panel" data-role="retrieval-panel" aria-label="Retrieved evidence">
+      <div class="retrieval-panel-header">
+        <div>
+          <p class="eyebrow">retrieval trace</p>
+          <h2>Top evidence</h2>
+        </div>
+        <span class="retrieval-count" data-role="retrieval-count">0 / 5</span>
+      </div>
+      <p class="retrieval-intro">The five passages the system considered first. Scores are lexical relevance, not truth.</p>
+      <div class="retrieval-list" data-role="retrieval-list" aria-live="polite"></div>
+    </aside>
   </main>
 
   <script type="module" src="/src/main.js"></script>

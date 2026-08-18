@@ -60,6 +60,7 @@ def main() -> None:
         off_topic_threshold=SETTINGS.off_topic_threshold,
         groundedness_threshold=SETTINGS.groundedness_threshold,
         top_k=SETTINGS.answer_top_k,
+        evidence_top_n=SETTINGS.evidence_top_n,
     )
 
     print(f"outcome: {result.outcome.value}")

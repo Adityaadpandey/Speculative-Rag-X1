@@ -11,6 +11,7 @@ body {
   color: var(--fg);
   background: var(--bg);
   line-height: 1.5;
+  min-height: 100vh;
 }
 
 ::selection { background: var(--hh-yellow); color: var(--hh-forest-deep); }
@@ -20,14 +21,29 @@ body {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: var(--bg);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(183, 216, 61, 0.16), transparent 25rem),
+    radial-gradient(circle at 88% 78%, rgba(243, 21, 134, 0.12), transparent 28rem),
+    linear-gradient(135deg, var(--bg) 0%, var(--bg-deep) 100%);
+}
+#gradient-mesh::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.07;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
 }
 
-/* ---- Flat panel: no blur, no shadow, hairline border, square corners ---- */
+/* ---- Layered panel: translucent surface, hairline border, soft depth ---- */
 .glass-panel {
   background: var(--panel-bg);
-  border: 1.5px solid var(--panel-border);
+  border: 1px solid var(--panel-border);
   border-radius: var(--radius-lg);
+  box-shadow: 0 18px 50px rgba(1, 25, 15, 0.16);
+  backdrop-filter: blur(12px);
 }
 
 .field { display: flex; flex-direction: column; gap: 0.3rem; font-family: var(--font-mono); font-size: 0.82rem; color: var(--fg-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
@@ -60,10 +76,11 @@ button.ask-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
+  box-shadow: 0 8px 0 rgba(3, 59, 36, 0.35);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
-button.ask-btn:hover { background: var(--hh-yellow-soft); }
-button.ask-btn:active { transform: scale(0.98); }
+button.ask-btn:hover { background: var(--hh-yellow-soft); transform: translateY(-2px); box-shadow: 0 10px 0 rgba(3, 59, 36, 0.35); }
+button.ask-btn:active { transform: translateY(2px); box-shadow: 0 3px 0 rgba(3, 59, 36, 0.35); }
 button.ask-btn:disabled { cursor: not-allowed; opacity: 0.55; }
 .ask-btn-spinner {
   width: 0.9rem;
@@ -118,6 +135,7 @@ button.secondary:hover { background: rgba(244, 229, 0, 0.1); }
   font-style: italic;
   letter-spacing: -0.01em;
   color: var(--hh-yellow);
+  text-shadow: 0 10px 30px rgba(1, 25, 15, 0.24);
   margin: 0 0 0.75rem;
 }
 .hero-subtitle {
@@ -137,22 +155,132 @@ button.secondary:hover { background: rgba(244, 229, 0, 0.1); }
   padding: 0.6rem 1.4rem 0.6rem 0.6rem;
 }
 .hero-query-row input[type="text"] { flex: 1; padding: 0.75rem 1rem; font-size: 1rem; border: none; }
-.hero-audio-row {
+
+/* ---- Secondary text input (fallback under the voice-first mic) ---- */
+.hero-query-row--secondary {
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: 0.4rem 0.9rem 0.4rem 0.4rem;
+  border-color: var(--fg-muted-soft);
+  opacity: 0.85;
+}
+.hero-query-row--secondary input[type="text"] { padding: 0.55rem 0.7rem; font-size: 0.9rem; }
+.hero-query-row--secondary .ask-btn { padding: 0.5rem 1rem; font-size: 0.85rem; }
+
+.voice-divider {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  color: var(--fg-muted-soft);
+  margin: 0 0 0.9rem;
+}
+
+/* ---- Voice-first hero control: the mic is the primary call to action ---- */
+.hero-voice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+.mic-btn {
+  width: 5.5rem;
+  height: 5.5rem;
+  border-radius: 50%;
+  border: 2px solid var(--hh-yellow);
+  background: var(--accent);
+  color: var(--accent-fg);
   display: flex;
   align-items: center;
-  gap: 0.85rem;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1.5px solid var(--panel-border);
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  letter-spacing: 0.02em;
-  color: var(--fg-muted);
   justify-content: center;
-  flex-wrap: wrap;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, transform 0.05s ease;
 }
-.audio-file-label { display: flex; align-items: center; gap: 0.4rem; cursor: pointer; text-transform: uppercase; }
+.mic-btn .mic-icon { width: 2.2rem; height: 2.2rem; }
+.mic-btn:hover:not(:disabled) { background: var(--hh-yellow-soft); }
+.mic-btn:active:not(:disabled) { transform: scale(0.97); }
+.mic-btn:disabled { cursor: not-allowed; opacity: 0.4; }
+.mic-btn.recording {
+  background: var(--hh-pink);
+  border-color: var(--hh-pink);
+  color: var(--hh-cream);
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(243, 21, 134, 0.35); }
+  50% { box-shadow: 0 0 0 0.85rem rgba(243, 21, 134, 0); }
+}
+
+.mic-btn-sm { width: 2.9rem; height: 2.9rem; flex-shrink: 0; }
+.mic-btn-sm .mic-icon { width: 1.35rem; height: 1.35rem; }
+
+/* ---- Wide hero record button (console-style, replaces the circular mic
+   button as the primary call to action) ---- */
+.record-btn-wide {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  width: 100%;
+  padding: 1rem 1.4rem;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--hh-yellow);
+  background: var(--accent);
+  color: var(--accent-fg);
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 1rem;
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+.record-btn-wide .mic-icon { width: 1.6rem; height: 1.6rem; flex-shrink: 0; }
+.record-btn-wide .record-btn-label { flex: 1; text-align: left; }
+.record-btn-wide .waveform { margin-left: auto; }
+.record-btn-wide:hover:not(:disabled) { background: var(--hh-yellow-soft); }
+.record-btn-wide:active:not(:disabled) { transform: scale(0.99); }
+.record-btn-wide:disabled { cursor: not-allowed; opacity: 0.4; }
+.record-btn-wide.recording {
+  background: var(--hh-pink);
+  border-color: var(--hh-pink);
+  color: var(--hh-cream);
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+.record-btn-wide.recording .waveform .bar { background: var(--hh-cream); }
+
+.transcript-preview {
+  width: 100%;
+  padding: 0.7rem 1rem;
+  text-align: left;
+}
+.transcript-preview-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted-soft);
+  margin-bottom: 0.25rem;
+}
+.transcript-preview-text { margin: 0; font-size: 0.95rem; color: var(--fg); }
+
+.audio-file-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--fg-muted-soft);
+}
+.audio-file-label:hover { color: var(--fg-muted); }
 .record-countdown { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--hh-pink); }
+.audio-disabled-note { font-family: var(--font-mono); font-size: 0.8rem; color: var(--fg-muted-soft); margin: 0; text-align: center; }
 
 /* ---- Compact sticky bar (result state) ---- */
 #compact-bar {
@@ -169,15 +297,51 @@ button.secondary:hover { background: rgba(244, 229, 0, 0.1); }
 }
 .compact-logo { font-family: var(--font-display); font-style: italic; font-weight: 700; font-size: 1.1rem; color: var(--hh-yellow); white-space: nowrap; }
 #compact-bar select { padding: 0.45rem 0.55rem; font-size: 0.85rem; }
-#compact-bar input[type="text"] { flex: 1; padding: 0.55rem 0.8rem; font-size: 0.9rem; border: 1.5px solid var(--panel-border); }
+
+/* Text path stays secondary here too -- the mic is still the primary
+   control, so the input/ask-button get the same muted treatment as the
+   hero's fallback text row instead of competing with it. */
+#compact-bar input[type="text"] { flex: 1; padding: 0.5rem 0.7rem; font-size: 0.85rem; border: 1.5px solid var(--fg-muted-soft); opacity: 0.8; }
+#compact-bar .ask-btn { padding: 0.45rem 0.85rem; font-size: 0.78rem; border-color: var(--fg-muted-soft); background: transparent; color: var(--fg-muted); }
+#compact-bar .ask-btn:hover { background: rgba(245, 238, 213, 0.08); }
+#compact-bar .ask-btn-spinner { border-color: rgba(245, 238, 213, 0.3); border-top-color: var(--fg-muted); }
 
 /* ---- Result view ---- */
 #result-view {
-  max-width: 44rem;
+  max-width: 72rem;
   margin: 0 auto;
   padding: 1.5rem 1.25rem 4rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
+  gap: 1rem;
+  align-items: start;
 }
-.answer-card { padding: 1.4rem 1.6rem; margin-bottom: 1rem; }
+.result-main-column { min-width: 0; }
+.answer-card { padding: 1.65rem 1.75rem; margin-bottom: 1rem; border-left: 4px solid var(--hh-yellow); }
+
+/* ---- Retrieval trace ---- */
+.retrieval-panel {
+  padding: 1.1rem;
+  position: sticky;
+  top: 5.1rem;
+  max-height: calc(100vh - 6.25rem);
+  overflow: auto;
+}
+.retrieval-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+.retrieval-panel h2 { margin: 0.1rem 0 0; font-family: var(--font-display); font-size: 1.35rem; line-height: 1.1; }
+.eyebrow { margin: 0; color: var(--hh-lime); font-family: var(--font-mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.12em; }
+.retrieval-count { color: var(--fg-muted); font-family: var(--font-mono); font-size: 0.72rem; white-space: nowrap; padding-top: 0.2rem; }
+.retrieval-intro { color: var(--fg-muted); font-size: 0.78rem; line-height: 1.4; margin: 0.75rem 0 1rem; }
+.retrieval-list { display: flex; flex-direction: column; gap: 0.65rem; }
+.retrieval-item { padding: 0.75rem; border: 1px solid var(--panel-border); border-radius: var(--radius-md); background: rgba(0, 0, 0, 0.08); transition: border-color 0.2s ease, background 0.2s ease; }
+.retrieval-item:hover { border-color: var(--hh-yellow); background: rgba(244, 229, 0, 0.06); }
+.retrieval-item--selected { border-color: var(--good); box-shadow: inset 3px 0 0 var(--good); }
+.retrieval-item-header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.45rem; }
+.retrieval-rank { color: var(--hh-yellow); font-family: var(--font-mono); font-size: 0.76rem; font-weight: 700; }
+.retrieval-score { color: var(--fg-muted-soft); font-family: var(--font-mono); font-size: 0.68rem; }
+.retrieval-text { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; color: var(--fg); font-size: 0.78rem; line-height: 1.45; margin: 0; }
+.retrieval-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-muted-soft); font-family: var(--font-mono); font-size: 0.64rem; margin: 0.6rem 0 0; }
+.retrieval-empty { color: var(--fg-muted); font-size: 0.82rem; }
 
 .badge {
   display: inline-flex;
@@ -209,9 +373,12 @@ button.secondary:hover { background: rgba(244, 229, 0, 0.1); }
 .skeleton-line.w-40 { width: 40%; }
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-.answer-text { font-family: var(--font-display); font-size: 1.4rem; font-weight: 600; margin: 0 0 0.6rem; line-height: 1.4; }
+.answer-text { font-family: var(--font-display); font-size: clamp(1.35rem, 2.4vw, 1.8rem); font-weight: 600; letter-spacing: -0.015em; margin: 0 0 0.8rem; line-height: 1.35; }
 .refusal-text { font-size: 1.02rem; margin: 0 0 0.6rem; color: var(--hh-pink); }
-.diff-word { display: inline-block; }
+/* pre-wrap, not the default normal: inline-block establishes its own
+   formatting context, so plain whitespace collapsing would trim the
+   leading/trailing space each diff chunk carries and glue words together. */
+.diff-word { display: inline-block; white-space: pre-wrap; }
 .diff-word.removed { text-decoration: line-through; opacity: 0.55; overflow: hidden; }
 
 .meta { font-family: var(--font-mono); letter-spacing: 0.02em; color: var(--fg-muted); font-size: 0.88rem; margin: 0.15rem 0; }
@@ -266,5 +433,10 @@ button.secondary:hover { background: rgba(244, 229, 0, 0.1); }
 #toast-container { position: fixed; top: 1.25rem; right: 1.25rem; z-index: 100; display: flex; flex-direction: column; gap: 0.6rem; max-width: 22rem; }
 .toast { padding: 0.75rem 1rem; border-radius: var(--radius-md); font-size: 0.9rem; font-family: var(--font-body); }
 .toast-error { background: var(--hh-forest-deep); color: var(--hh-pink); border: 1.5px solid var(--hh-pink); }
+
+@media (max-width: 900px) {
+  #result-view { grid-template-columns: 1fr; }
+  .retrieval-panel { position: static; max-height: none; }
+}
 
 [hidden] { display: none !important; }

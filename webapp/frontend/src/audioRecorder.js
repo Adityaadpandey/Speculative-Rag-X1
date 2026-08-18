@@ -13,6 +13,7 @@ export function createAudioRecorder({ waveformEl, countdownEl, onStop, onError }
   let bars = [];
 
   function buildBars() {
+    if (!waveformEl) return;
     waveformEl.innerHTML = "";
     bars = [];
     for (let i = 0; i < BAR_COUNT; i++) {
@@ -24,6 +25,7 @@ export function createAudioRecorder({ waveformEl, countdownEl, onStop, onError }
   }
 
   function animateWaveform() {
+    if (!waveformEl) return;
     const data = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(data);
     const step = Math.floor(data.length / BAR_COUNT) || 1;
@@ -42,8 +44,10 @@ export function createAudioRecorder({ waveformEl, countdownEl, onStop, onError }
       audioContext.close();
       audioContext = null;
     }
-    waveformEl.hidden = true;
-    waveformEl.innerHTML = "";
+    if (waveformEl) {
+      waveformEl.hidden = true;
+      waveformEl.innerHTML = "";
+    }
   }
 
   async function start() {
@@ -77,14 +81,16 @@ export function createAudioRecorder({ waveformEl, countdownEl, onStop, onError }
       onStop(blob, `recording.${extension}`);
     });
 
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const source = audioContext.createMediaStreamSource(stream);
-    analyser = audioContext.createAnalyser();
-    analyser.fftSize = 128;
-    source.connect(analyser);
-    buildBars();
-    waveformEl.hidden = false;
-    animateWaveform();
+    if (waveformEl) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(stream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 128;
+      source.connect(analyser);
+      buildBars();
+      waveformEl.hidden = false;
+      animateWaveform();
+    }
 
     mediaRecorder.start();
 

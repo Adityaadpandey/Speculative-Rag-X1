@@ -44,12 +44,19 @@ const answerSourceIdsEl = document.querySelector('[data-role="answer-source-ids"
 const resultReasonEl = document.querySelector('[data-role="result-reason"]');
 const latencyTableBodyEl = document.querySelector('[data-role="latency-table-body"]');
 const totalE2eLatencyMsEl = document.querySelector('[data-role="total-e2e-latency-ms"]');
+const retrievalCountEl = document.querySelector('[data-role="retrieval-count"]');
+const retrievalListEl = document.querySelector('[data-role="retrieval-list"]');
 
 const audioFileInputEl = heroEl.querySelector('[data-role="audio-file"]');
-const recordBtnEl = heroEl.querySelector('[data-role="record-btn"]');
+const heroRecordBtnEl = heroEl.querySelector('[data-role="record-btn"]');
+const heroRecordLabelEl = heroEl.querySelector('[data-role="record-btn-label"]');
 const waveformEl = heroEl.querySelector('[data-role="waveform"]');
-const recordCountdownEl = heroEl.querySelector('[data-role="record-countdown"]');
+const heroRecordCountdownEl = heroEl.querySelector('[data-role="record-countdown"]');
 const audioDisabledNoteEl = heroEl.querySelector('[data-role="audio-disabled-note"]');
+const transcriptPreviewEl = heroEl.querySelector('[data-role="transcript-preview"]');
+const transcriptPreviewTextEl = heroEl.querySelector('[data-role="transcript-preview-text"]');
+const compactRecordBtnEl = compactBarEl.querySelector('[data-role="record-btn"]');
+const compactRecordCountdownEl = compactBarEl.querySelector('[data-role="record-countdown"]');
 
 initToastContainer(toastContainerEl);
 initGradientMesh(gradientMeshEl);
@@ -109,7 +116,8 @@ async function loadCollections() {
 
   if (!state.sarvamKeyConfigured) {
     audioFileInputEl.disabled = true;
-    recordBtnEl.disabled = true;
+    heroRecordBtnEl.disabled = true;
+    compactRecordBtnEl.disabled = true;
     audioDisabledNoteEl.hidden = false;
   }
 }
@@ -124,6 +132,8 @@ function resetResultView() {
   resultReasonEl.textContent = "";
   latencyTableBodyEl.innerHTML = "";
   totalE2eLatencyMsEl.textContent = "";
+  retrievalCountEl.textContent = "0 / 5";
+  retrievalListEl.innerHTML = "";
   state.lastAnswerText = null;
   state.currentRecoveryPhase = null;
   for (const name of STEP_NAMES) {
@@ -169,7 +179,51 @@ function willRunVerify(pipelineOutcome) {
   return pipelineOutcome === "answered";
 }
 
+function renderRetrievedCandidates(candidates = [], selectedSourceIds = []) {
+  retrievalListEl.innerHTML = "";
+  const visible = candidates.slice(0, 5);
+  retrievalCountEl.textContent = `${visible.length} / 5`;
+
+  if (!visible.length) {
+    const empty = document.createElement("p");
+    empty.className = "retrieval-empty";
+    empty.textContent = "No passages were returned.";
+    retrievalListEl.appendChild(empty);
+    return;
+  }
+
+  const selected = new Set(selectedSourceIds);
+  for (const candidate of visible) {
+    const card = document.createElement("article");
+    card.className = `retrieval-item${selected.has(candidate.source_passage_id) ? " retrieval-item--selected" : ""}`;
+
+    const header = document.createElement("div");
+    header.className = "retrieval-item-header";
+    const rank = document.createElement("span");
+    rank.className = "retrieval-rank";
+    rank.textContent = `0${candidate.rank}`.slice(-2);
+    const score = document.createElement("span");
+    score.className = "retrieval-score";
+    score.textContent = `score ${Number(candidate.score).toFixed(2)}`;
+    header.append(rank, score);
+
+    const text = document.createElement("p");
+    text.className = "retrieval-text";
+    text.textContent = candidate.text;
+
+    const meta = document.createElement("p");
+    meta.className = "retrieval-meta";
+    meta.textContent = `${candidate.strategy} · ${candidate.query_type} · ${candidate.source_passage_id}`;
+
+    card.append(header, text, meta);
+    retrievalListEl.appendChild(card);
+  }
+}
+
 function renderFastPath(data) {
+  resultViewEl.hidden = false;
+  renderRetrievedCandidates(data.pipeline.retrieved_candidates);
+
   resultViewEl.hidden = false;
   const totalMs = data.pipeline.total_ms.toFixed(2);
 
@@ -294,6 +348,10 @@ function renderInstrumentation(instrumentation, finalStatus) {
 function renderResult(data) {
   resultViewEl.hidden = false;
   resultReasonEl.textContent = data.reason ?? "";
+  renderRetrievedCandidates(
+    data.pipeline.retrieved_candidates,
+    data.answer?.source_passage_ids ?? [],
+  );
 
   // Badge morph fires together with the answer diff/refusal render below, not
   // before it -- the spec requires the badge to resolve in sync with the
@@ -402,6 +460,10 @@ async function transcribeAndQuery(blob, filename) {
     return;
   }
   controls.queryInput.value = data.transcript;
+  if (transcriptPreviewEl && transcriptPreviewTextEl) {
+    transcriptPreviewTextEl.textContent = data.transcript;
+    transcriptPreviewEl.hidden = false;
+  }
   runQuery(data.transcript);
 }
 
@@ -410,26 +472,42 @@ audioFileInputEl.addEventListener("change", () => {
   if (file) transcribeAndQuery(file, file.name);
 });
 
-const audioRecorder = createAudioRecorder({
-  waveformEl,
-  countdownEl: recordCountdownEl,
-  onStop: (blob, filename) => {
-    recordBtnEl.textContent = "Record";
-    transcribeAndQuery(blob, filename);
-  },
-  onError: (err) => {
-    recordBtnEl.textContent = "Record";
-    showToast(`microphone access failed: ${err.message}`);
-  },
-});
-
-recordBtnEl.addEventListener("click", () => {
-  if (audioRecorder.isRecording()) {
-    audioRecorder.stop();
-  } else {
-    recordBtnEl.textContent = "Stop";
-    audioRecorder.start();
+function wireRecorder({ recordBtnEl, waveformEl, countdownEl, labelEl }) {
+  function reset() {
+    recordBtnEl.classList.remove("recording");
+    recordBtnEl.setAttribute("aria-label", "Record a question");
+    if (labelEl) labelEl.textContent = "Start Recording";
   }
-});
+
+  const recorder = createAudioRecorder({
+    waveformEl,
+    countdownEl,
+    onStop: (blob, filename) => {
+      reset();
+      transcribeAndQuery(blob, filename);
+    },
+    onError: (err) => {
+      reset();
+      showToast(`microphone access failed: ${err.message}`);
+    },
+  });
+
+  recordBtnEl.addEventListener("click", () => {
+    if (recorder.isRecording()) {
+      recorder.stop();
+    } else {
+      recordBtnEl.classList.add("recording");
+      recordBtnEl.setAttribute("aria-label", "Stop recording");
+      if (labelEl) labelEl.textContent = "Stop Recording";
+      if (transcriptPreviewEl) transcriptPreviewEl.hidden = true;
+      recorder.start();
+    }
+  });
+
+  return recorder;
+}
+
+wireRecorder({ recordBtnEl: heroRecordBtnEl, waveformEl, countdownEl: heroRecordCountdownEl, labelEl: heroRecordLabelEl });
+wireRecorder({ recordBtnEl: compactRecordBtnEl, waveformEl: null, countdownEl: compactRecordCountdownEl });
 
 loadCollections().catch((err) => showToast(`failed to load collections: ${err.message}`));

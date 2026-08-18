@@ -1,24 +1,25 @@
-"""Builds the real production hi_native/en_native collections from a much
-larger slice of MS MARCO-XI than the 300-query eval sample the other scripts
-use -- this is content to serve, not a benchmark. Sources hi/en from both
-hintrain.parquet and hinval.parquet (same schema, concatenated), since
-English_passages/Translated_passages/query/Eng_Query all live in the
-Hindi-sourced files per config.LANGUAGE_SOURCES.
+"""Builds the real production hi_native/en_native/ur_native collections from
+much larger slices of MS MARCO-XI than the 300-query eval sample the other
+scripts use -- this is content to serve, not a benchmark. Hindi and English
+share the Hindi-sourced files; Urdu is read from its own Urdu files.
 
 Sized for Qdrant Cloud's free tier (4GB disk, shared across every collection
 in the cluster): SAMPLE_QUERIES=40_000 works out to roughly 2.64KB/point for
 hi and 1.64KB/point for en (measured from the existing 2,994-point
 collections), with about 9.87 unique passages per query, so roughly 1.7GB
-total -- comfortable headroom under the 4GB cap. Raise SAMPLE_QUERIES only
-after redoing that math yourself; there's no per-collection safety net here.
+total before the Urdu collection -- comfortable headroom under the 4GB cap.
+Raise SAMPLE_QUERIES only after redoing that math yourself; there's no
+per-collection safety net here.
 
 Unlike the eval scripts, this does not filter to queries with a labeled gold
 passage (load_validation_sample does that; real content to index doesn't
-need one) and deletes and replaces the existing hi_native/en_native
-collections (SparseChunkIndex's constructor semantics), matching the
-strategy name the webapp already reads by default.
+need one) and deletes and replaces the existing hi_native, en_native, and
+ur_native collections (SparseChunkIndex's constructor semantics), matching
+the strategy name the webapp already reads by default.
 
-Usage: uv run python -m scripts.ingest_production_corpus [sample_queries]
+Usage: uv run python -m scripts.ingest_production_corpus [sample_queries] [language ...]
+       Add one or more languages (for example, `40000 ur`) to ingest only
+       those collections; omitting them rebuilds hi, en, and ur.
 """
 
 import sys
@@ -41,10 +42,21 @@ UPSERT_BATCH_SIZE = 500
 
 _HI_TRAIN = REPO_ROOT / "MSMARCO-XI" / "train" / "hintrain.parquet"
 _HI_VAL = REPO_ROOT / "MSMARCO-XI" / "validation" / "hinval.parquet"
+_UR_TRAIN = REPO_ROOT / "MSMARCO-XI" / "train" / "urdtrain.parquet"
+_UR_VAL = REPO_ROOT / "MSMARCO-XI" / "validation" / "urdval.parquet"
 
-# (language, text_field) -- both read from the same hi-sourced parquet files,
-# using the same passage_id_for(language, text) identity space the eval scripts use.
-_TARGETS = [("hi", "Translated_passages"), ("en", "English_passages")]
+# A target is (language, text_field). Hindi and English use the Hindi corpus;
+# Urdu uses the Urdu corpus. Urdu's standard language code is "ur".
+_TARGETS = [
+    ("hi", "Translated_passages"),
+    ("en", "English_passages"),
+    ("ur", "Translated_passages"),
+]
+_CORPUS_PATHS = {
+    "hi": (_HI_TRAIN, _HI_VAL),
+    "ur": (_UR_TRAIN, _UR_VAL),
+}
+_TARGET_CORPUS = {"hi": "hi", "en": "hi", "ur": "ur"}
 
 
 _TRAIN_READ_BATCH_SIZE = 5_000
@@ -62,9 +74,15 @@ def _read_train_parquet(path) -> pd.DataFrame:
     return pd.concat([b.to_pandas() for b in batches], ignore_index=True)
 
 
-def load_combined_sample(sample_size: int, seed: int) -> pd.DataFrame:
-    train_df = _read_train_parquet(_HI_TRAIN)
-    val_df = pd.read_parquet(_HI_VAL)
+def load_combined_sample(sample_size: int, seed: int, corpus_language: str = "hi") -> pd.DataFrame:
+    """Load a sampled train+validation corpus for Hindi or Urdu."""
+    try:
+        train_path, validation_path = _CORPUS_PATHS[corpus_language]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported corpus language: {corpus_language}") from exc
+
+    train_df = _read_train_parquet(train_path)
+    val_df = pd.read_parquet(validation_path)
     combined = pd.concat([train_df, val_df], ignore_index=True)
     n = min(sample_size, len(combined))
     return combined.sample(n=n, random_state=seed).reset_index(drop=True)
@@ -88,19 +106,49 @@ def ingest_language(language: str, text_field: str, df: pd.DataFrame, client) ->
 
 
 def main() -> None:
-    sample_size = int(sys.argv[1]) if len(sys.argv) > 1 else SAMPLE_QUERIES
+    arguments = sys.argv[1:]
+    sample_size = SAMPLE_QUERIES
+    if arguments:
+        try:
+            sample_size = int(arguments[0])
+            arguments = arguments[1:]
+        except ValueError:
+            pass
+    requested_languages = set(arguments)
+    known_languages = {language for language, _ in _TARGETS}
+    unknown_languages = requested_languages - known_languages
+    if unknown_languages:
+        raise SystemExit(
+            f"Unknown language(s): {', '.join(sorted(unknown_languages))}. "
+            f"Choose from: {', '.join(sorted(known_languages))}"
+        )
+    targets = [
+        target for target in _TARGETS
+        if not requested_languages or target[0] in requested_languages
+    ]
 
-    print(f"Loading {sample_size} queries from hintrain.parquet + hinval.parquet (seed={SETTINGS.sample_seed})...")
-    df = load_combined_sample(sample_size, SETTINGS.sample_seed)
-    print(f"Loaded {len(df)} query rows.")
+    corpora: dict[str, pd.DataFrame] = {}
+    selected_corpora = dict.fromkeys(_TARGET_CORPUS[language] for language, _ in targets)
+    for corpus_language in selected_corpora:
+        train_path, validation_path = _CORPUS_PATHS[corpus_language]
+        print(
+            f"Loading {sample_size} queries from {train_path.name} + "
+            f"{validation_path.name} (seed={SETTINGS.sample_seed})..."
+        )
+        corpora[corpus_language] = load_combined_sample(
+            sample_size, SETTINGS.sample_seed, corpus_language
+        )
+        print(f"Loaded {len(corpora[corpus_language])} query rows.")
 
     client = get_qdrant_client()
-    for language, text_field in _TARGETS:
+    for language, text_field in targets:
+        df = corpora[_TARGET_CORPUS[language]]
         print(f"Ingesting '{language}_native' ({text_field})...")
         n_chunks = ingest_language(language, text_field, df, client)
         print(f"  '{language}_native': {n_chunks} chunks indexed.\n")
 
-    print("Done. hi_native and en_native now serve the full sampled corpus.")
+    ingested = ", ".join(f"{language}_native" for language, _ in targets)
+    print(f"Done. {ingested} now serve the sampled corpora.")
 
 
 if __name__ == "__main__":

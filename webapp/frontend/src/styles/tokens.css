@@ -17,14 +17,14 @@
   --hh-cream: #f5eed5;
   --hh-black: #101010;
 
-  --bg: var(--hh-forest);
-  --bg-deep: var(--hh-forest-deep);
+  --bg: #075b35;
+  --bg-deep: #033b24;
   --fg: var(--hh-cream);
-  --fg-muted: rgba(245, 238, 213, 0.68);
-  --fg-muted-soft: rgba(245, 238, 213, 0.45);
+  --fg-muted: rgba(245, 238, 213, 0.72);
+  --fg-muted-soft: rgba(245, 238, 213, 0.48);
 
-  --panel-bg: var(--hh-forest-deep);
-  --panel-border: rgba(245, 238, 213, 0.28);
+  --panel-bg: rgba(3, 59, 36, 0.82);
+  --panel-border: rgba(245, 238, 213, 0.24);
 
   --accent: var(--hh-yellow);
   --accent-fg: var(--hh-forest-deep);
@@ -44,7 +44,7 @@
   --blob-2: var(--hh-pink);
   --blob-3: var(--hh-yellow);
 
-  --radius-lg: 0px;
-  --radius-md: 0px;
+  --radius-lg: 18px;
+  --radius-md: 10px;
   --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }

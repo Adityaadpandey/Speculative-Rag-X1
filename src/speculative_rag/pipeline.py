@@ -9,7 +9,7 @@ import time
 from contextlib import contextmanager
 
 from speculative_rag.answer_type import expected_answer_type, span_satisfies_expected_type
-from speculative_rag.generation import select_best_evidence
+from speculative_rag.generation import complete_answer_from_evidence, select_best_evidence
 from speculative_rag.guardrails import check_unsafe_input, groundedness_score, is_off_topic
 from speculative_rag.pipeline_schemas import Answer, PipelineResult, RagOutcome, StageTiming
 
@@ -36,7 +36,7 @@ def run_pipeline(
     off_topic_threshold: float,
     groundedness_threshold: float,
     top_k: int,
-    evidence_top_n: int = 5,
+    evidence_top_n: int = 10,
 ) -> PipelineResult:
     timer = _Timer()
 
@@ -90,6 +90,11 @@ def run_pipeline(
             retrieved_chunks=retrieval.scored_chunks,
         )
     chosen, span, raw_sentence, matched_tokens = best
+    # If extraction selected a terse prefix such as "India is a peninsula",
+    # expand it to the complete source sentence before showing it to the user.
+    # This remains grounded because every added token comes verbatim from the
+    # selected passage.
+    span = complete_answer_from_evidence(span, [chosen.chunk.text])
 
     with timer.stage("guardrail_groundedness"):
         ground = groundedness_score(span, chosen.chunk.text)

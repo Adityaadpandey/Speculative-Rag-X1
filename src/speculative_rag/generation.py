@@ -27,16 +27,13 @@ _DUPLICATE_TAIL_PROBE_LEN = 30
 _CLAUSE_SPLIT_RE = re.compile(r"[,;]")
 
 # Encyclopedic geography passages love the "X is bordered by A to the north,
-# B to the south, C to the east, ..." construction -- comma-splitting a
-# sentence like that produces list items ("Goa to the north west") that read
-# as dangling fragments on their own, because the subject and verb ("X is
-# bordered by") live only in the first clause and never repeat. Matches a
-# bare "<name> to the <direction>[ <word>]" clause with nothing else in it,
-# so _trim_to_best_clause knows to splice the lead clause back on instead of
-# handing back the fragment alone.
+# B to the south, C to the east, ..." construction. The answer-bearing item
+# is often a bare "<name> to the <direction>" clause (for example, "Goa to
+# the north west"). Returning the lead clause as well answers the location
+# question with the location's neighbour and all of its unrelated borders.
 _BARE_DIRECTIONAL_FRAGMENT_RE = re.compile(
     r"^[\w'&.-]+(?:\s[\w'&.-]+)*\sto\sthe\s"
-    r"(north|south|east|west|northeast|northwest|southeast|southwest)(\s\w+)?$",
+    r"(north|south|east|west|northeast|northwest|southeast|southwest)(\s\w+)?[.!?]?$",
     re.IGNORECASE,
 )
 
@@ -51,19 +48,39 @@ _LEADING_CONNECTIVES = (
 
 
 def _strip_duplicate_tail(text: str) -> str:
-    """Look for a long, exact repeat of the passage's own opening (dropping
-    its first character, which is the corruption pattern we've actually
-    seen -- or, failing that, an exact repeat with no character dropped) and
-    cut the passage off right before it. The probe is long enough that an
-    accidental match on ordinary prose is basically impossible, so this only
-    ever fires on the real corruption."""
+    """Cut repeated corpus text, including repeats with a dropped first char.
+
+    MS MARCO passages contain artifacts such as ``India is a peninsula ...``
+    followed later by ``Indus.ndia is a peninsula ...``. The old check only
+    looked for a repeat of the passage opening, so the malformed second copy
+    could win extraction. Compare long probes beginning at sentence
+    boundaries, then cut before a later repeated boundary. A 30-character
+    match is intentionally conservative to avoid changing ordinary prose.
+    """
     if len(text) < _DUPLICATE_TAIL_PROBE_LEN * 3:
         return text
-    for drop in (1, 0):
-        probe = text[drop : drop + _DUPLICATE_TAIL_PROBE_LEN]
-        idx = text.find(probe, _DUPLICATE_TAIL_PROBE_LEN)
-        if idx != -1:
-            return text[:idx].rstrip()
+
+    starts = [0]
+    for match in re.finditer(r"[.!?]", text):
+        start = match.end()
+        while start < len(text) and text[start].isspace():
+            start += 1
+        if start < len(text):
+            starts.append(start)
+
+    for first_start in starts:
+        probe = text[first_start : first_start + _DUPLICATE_TAIL_PROBE_LEN]
+        if len(probe) < _DUPLICATE_TAIL_PROBE_LEN:
+            continue
+        for dropped_first_char in (False, True):
+            needle = probe[1:] if dropped_first_char else probe
+            search_from = first_start + _DUPLICATE_TAIL_PROBE_LEN
+            duplicate_start = text.find(needle, search_from)
+            if duplicate_start == -1:
+                continue
+            if duplicate_start == 0 or text[:duplicate_start].rstrip()[-1:] not in ".!?":
+                continue
+            return text[:duplicate_start].rstrip()
     return text
 
 
@@ -85,6 +102,36 @@ def _strip_leading_connective(text: str) -> str:
         if text.startswith(connective):
             return _uppercase_first_letter(text[len(connective) :])
     return text
+
+
+def _rewrite_directional_location(fragment: str, lead_clause: str) -> str:
+    """Turn a list fragment into a concise, grounded location answer.
+
+    For example, the source sentence ``Karnataka is bordered by ..., Goa to
+    the north west`` should be shown as ``Goa is to the north west of
+    Karnataka``. The relation is already stated by the source; this only
+    restores the omitted subject/verb so the UI does not display a fragment.
+    """
+    match = _BARE_DIRECTIONAL_FRAGMENT_RE.fullmatch(fragment.strip())
+    if match is None:
+        return fragment
+
+    direction_match = re.search(
+        r"\s+to\s+the\s+(.+?)[.!?]?$", fragment.strip(), re.IGNORECASE
+    )
+    if direction_match is None:
+        return fragment
+    fragment_subject = fragment.strip()[: direction_match.start()].strip()
+
+    # The shared subject is normally before "is/are bordered", "is/are
+    # located", etc. Keep this deliberately conservative: if it cannot find
+    # one, returning the original fragment is safer than inventing context.
+    lead_match = re.match(r"^(.+?)\s+(?:is|are|was|were)\b", lead_clause.strip(), re.IGNORECASE)
+    if lead_match is None or not fragment_subject:
+        return fragment
+    lead_subject = lead_match.group(1).strip()
+    direction = direction_match.group(1).strip().rstrip(".!?")
+    return f"{fragment_subject} is to the {direction} of {lead_subject}."
 
 
 def _trim_to_best_clause(
@@ -119,7 +166,11 @@ def _trim_to_best_clause(
 
     winner = max(typed, key=clause_key)
     if winner != clauses[0] and _BARE_DIRECTIONAL_FRAGMENT_RE.match(winner):
-        return f"{clauses[0]}, {winner}"
+        # For a location question, rewrite the directional list item as a
+        # standalone sentence. Do not prepend the lead clause: in "Karnataka
+        # ..., Goa to the north west" that would make Karnataka look like the
+        # answer.
+        return _rewrite_directional_location(winner, clauses[0])
     return winner
 
 
@@ -189,6 +240,27 @@ def _select_span_from_passage(query_text: str, passage_text: str, language: str)
     trimmed = _trim_to_best_clause(winner, expected_type, query_tokens, language)
     trimmed = _strip_leading_connective(trimmed)
     return _SelectedSpan(text=trimmed, raw_sentence=winner.strip(), matched_tokens=winner_score.matched_tokens)
+
+
+def complete_answer_from_evidence(answer_text: str, evidence_texts: list[str]) -> str:
+    """Expand a generated prefix when the source contains its full sentence.
+
+    LLMs sometimes answer ``India is a peninsula`` even though the selected
+    evidence explicitly continues with the explanation and surrounding seas.
+    If the answer is a verbatim token-prefix of a source sentence, returning
+    that complete source sentence improves completeness without adding any
+    unsupported text. Non-prefix answers are left untouched.
+    """
+    answer_tokens = tokenize_ordered(answer_text)
+    if len(answer_tokens) < 3:
+        return answer_text
+
+    for evidence in evidence_texts:
+        for sentence in split_sentences(evidence):
+            source_tokens = tokenize_ordered(sentence)
+            if len(source_tokens) > len(answer_tokens) and source_tokens[: len(answer_tokens)] == answer_tokens:
+                return sentence.strip()
+    return answer_text
 
 
 def select_answer_span(query_text: str, passage_text: str, language: str) -> str | None:

@@ -49,9 +49,16 @@ class Settings(BaseModel):
     # instead of only ever seeing embedding rank-1.
     answer_top_k: int = 20
     # How many of those retrieved candidates the hot-path extractive
-    # generator actually scores. Kept smaller than answer_top_k so the fast
-    # path stays cheap while the LLM fallbacks still get the wider pool.
-    evidence_top_n: int = 5
+    # generator actually scores. Matched to answer_top_k: measured on the
+    # production en_native collection (392K chunks), the gold passage lands
+    # in the top 10 only 71% of the time it's retrievable at all, vs 80% in
+    # the top 20 -- and extraction is cheap (single-digit ms regardless of
+    # how many short candidate sentences it scores), so capping this below
+    # answer_top_k was throwing away already-paid-for retrieval recall for
+    # no latency benefit. The LLM fallbacks in answer_orchestrator.py read
+    # PipelineResult.retrieved_chunks directly (the full answer_top_k pool),
+    # not this value, so raising it doesn't shrink what they see either.
+    evidence_top_n: int = 20
     latency_sample_size: int = 200
     # Non-LLM prefilter ahead of the async rerank+regenerate LLM call (see
     # answer_orchestrator.resolve_recovery). Ships disabled: a prior cheap
@@ -64,6 +71,18 @@ class Settings(BaseModel):
     rerank_prefilter_enabled: bool = False
     rerank_prefilter_lexical_top_n: int = 8
     rerank_prefilter_retrieval_reserve: int = 5
+    # Async-only dense-cosine rerank over the already-retrieved BM25 pool in
+    # answer_orchestrator.resolve_recovery (see dense_rerank.py) -- reorders
+    # PipelineResult.retrieved_chunks before the prefilter/LLM-rerank stages,
+    # never drops any. Measured on the real en_native production collection
+    # (392K chunks): reordering the same top-20 BM25 candidates by dense
+    # cosine similarity takes Hit@5-into-the-pool from 0.50 to 0.71. Ships
+    # disabled: the dense model (~1GB RSS, see embedding.py) is loaded lazily
+    # and only when this flips true, but the free-tier webapp process still
+    # can't carry that alongside the sparse hot path without a separate
+    # hosting decision (dedicated worker/service, or a smaller dense model)
+    # -- flip this on only once that's settled.
+    dense_rerank_enabled: bool = False
     # STT + async groundedness check settings.
     sarvam_stt_url: str = "https://api.sarvam.ai/speech-to-text"
     sarvam_default_language_code: str = "hi-IN"

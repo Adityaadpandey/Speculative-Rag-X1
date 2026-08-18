@@ -1,4 +1,8 @@
-from speculative_rag.generation import prefilter_rerank_candidates, select_answer_span
+from speculative_rag.generation import (
+    complete_answer_from_evidence,
+    prefilter_rerank_candidates,
+    select_answer_span,
+)
 from speculative_rag.pipeline_schemas import ScoredChunk
 from speculative_rag.schemas import Chunk
 
@@ -15,6 +19,22 @@ def _scored(text, score, pid="p1", suffix="0", language="en"):
         ),
         score=score,
     )
+
+
+def test_complete_answer_from_evidence_expands_a_terse_prefix():
+    answer = complete_answer_from_evidence(
+        "India is a peninsula",
+        ["India is a peninsula, bound by the Indian Ocean in the south and the Arabian Sea on the west."],
+    )
+    assert answer == "India is a peninsula, bound by the Indian Ocean in the south and the Arabian Sea on the west."
+
+
+def test_complete_answer_from_evidence_keeps_non_prefix_answer():
+    answer = complete_answer_from_evidence(
+        "India is in South Asia",
+        ["India is a peninsula, bound by the Indian Ocean in the south."],
+    )
+    assert answer == "India is in South Asia"
 
 
 def test_select_span_picks_sentence_overlapping_query():
@@ -134,6 +154,22 @@ def test_select_span_strips_duplicate_tail_corruption():
     assert span.count("Strelsauville") == 1
 
 
+def test_select_span_removes_repeated_middle_sentence_with_dropped_character():
+    # Real corpus artifact: a sentence is repeated later with its first
+    # character dropped ("India ..." becomes "ndia ..."), glued after a
+    # different sentence. The malformed copy must not become the answer.
+    passage = (
+        "India has seven neighbours.India is a peninsula, bound by the Indian Ocean "
+        "in the south, the Arabian Sea on the west and Bay of Bengal in the east. "
+        "India gets its name from the Greek word, Indus.ndia is a peninsula, bound "
+        "by the Indian Ocean in the south, the Arabian Sea on the west and Bay of "
+        "Bengal in the east."
+    )
+    span = select_answer_span("how is India a peninsula", passage, "en")
+    assert span.startswith("India is a peninsula")
+    assert "Indus.ndia" not in span
+
+
 def test_select_span_splits_sentence_glued_to_next_by_missing_space():
     # Companion corpus artifact: real sentence boundaries sometimes lose
     # their separating space (e.g. "...Germany.Alphabetical list...").
@@ -170,18 +206,23 @@ def test_select_span_trims_to_clause_satisfying_expected_type():
     assert span == "drew a crowd of 5000 people."
 
 
-def test_select_span_keeps_lead_clause_for_bare_directional_list_item():
+def test_select_span_returns_bare_directional_location_item():
     # Real corpus sentence shape (en_native, Karnataka passage): a shared
     # subject+verb followed by a comma list of "NP to the DIRECTION" items.
-    # The clause that actually mentions Goa ("Goa to the north west") has no
-    # subject or verb of its own -- on its own it's not a sentence. The trim
-    # must splice the lead clause back on so the answer still reads as one.
+    # For "where is Goa", returning the lead clause would incorrectly make
+    # Karnataka look like the answer. Restore the omitted subject/verb so the
+    # location-bearing list item becomes a natural standalone answer.
     passage = (
         "Karnataka is bordered by the Arabian Sea to the west, Goa to the north west, "
         "Maharashtra to the north, and Kerala to the south west."
     )
     span = select_answer_span("where is goa", passage, "en")
-    assert span == "Karnataka is bordered by the Arabian Sea to the west, Goa to the north west"
+    assert span == "Goa is to the north west of Karnataka."
+
+
+def test_select_span_rewrites_final_directional_location_fragment():
+    passage = "Karnataka is bordered by the Arabian Sea to the west, Goa to the north west."
+    assert select_answer_span("where is Goa", passage, "en") == "Goa is to the north west of Karnataka."
 
 
 def test_select_span_strips_leading_connective_without_corrupting_acronym():

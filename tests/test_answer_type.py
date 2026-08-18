@@ -41,6 +41,13 @@ def test_expected_answer_type_numeric_population():
     assert expected_answer_type("what is the population of tokyo") == "numeric"
 
 
+def test_expected_answer_type_numeric_area():
+    # Regression: this query went unclassified (no type gate at all), so a
+    # completely off-topic candidate with higher raw lexical overlap won
+    # over the passage that actually states the court's dimensions.
+    assert expected_answer_type("what is a basketball court's area") == "numeric"
+
+
 def test_expected_answer_type_numeric_hindi_credit_score():
     assert expected_answer_type("एक्सपीडिया कार्ड के लिए आपको किस तरह का क्रेडिट स्कोर मंजूरी दी जानी चाहिए") == "numeric"
 
@@ -137,6 +144,31 @@ def test_span_satisfies_expected_type_location_positive():
 
 def test_span_satisfies_expected_type_location_positive_phrase_marker():
     assert span_satisfies_expected_type("location", "Goa is a state in the south of India.") is True
+
+
+def test_span_satisfies_expected_type_location_negative_generic_in_the():
+    # Regression: bare "in the"/"on the" are far too generic to signal a
+    # place -- this real production candidate ("housed in the Lighthouse
+    # Keeper's Cottage") passed the location gate on that substring alone
+    # and beat the actually-correct passage for "where is nfl hall of fame
+    # museum". Neither "in the" nor "on the" appear in any passing test
+    # case that isn't already covered by a _LOCATION_MARKER_WORDS token.
+    text = "A museum of local history is housed in the Lighthouse Keeper's Cottage."
+    assert span_satisfies_expected_type("location", text) is False
+
+
+def test_span_satisfies_expected_type_location_negative_nearby_substring():
+    # Regression: "near" was matched as a bare substring, so "nearby" (an
+    # unrelated word that merely contains "near") false-positived this gate
+    # -- this is the real candidate that beat the correct "Pro Football Hall
+    # of Fame... is the home of..." passage for "where is nfl hall of fame
+    # museum" even after the "in the"/"on the" fix above.
+    text = "A museum of local history is housed in the Lighthouse Keeper's Cottage, and the Shearers Hall of Fame is nearby."
+    assert span_satisfies_expected_type("location", text) is False
+
+
+def test_span_satisfies_expected_type_location_positive_near_word():
+    assert span_satisfies_expected_type("location", "The hotel is near the Eiffel Tower.") is True
 
 
 def test_span_satisfies_expected_type_location_negative():

@@ -153,12 +153,28 @@ class AnswerRequest(BaseModel):
 
 
 def _serialize_pipeline(pipeline_result) -> dict:
+    # Keep this deliberately capped: the UI needs enough context to explain
+    # the answer, not a second copy of the whole retrieval payload.
+    retrieved_candidates = [
+        {
+            "rank": rank,
+            "score": scored.score,
+            "chunk_id": scored.chunk.chunk_id,
+            "source_passage_id": scored.chunk.source_passage_id,
+            "text": scored.chunk.text,
+            "language": scored.chunk.language,
+            "query_type": scored.chunk.query_type,
+            "strategy": scored.chunk.strategy,
+        }
+        for rank, scored in enumerate(pipeline_result.retrieved_chunks[:5], start=1)
+    ]
     return {
         "outcome": pipeline_result.outcome.value,
         "timings": [{"stage": t.stage, "elapsed_ms": t.elapsed_ms} for t in pipeline_result.timings],
         "total_ms": pipeline_result.total_ms,
         "num_retrieved": pipeline_result.num_retrieved,
         "num_evidence_candidates": pipeline_result.num_evidence_candidates,
+        "retrieved_candidates": retrieved_candidates,
     }
 
 
@@ -216,6 +232,7 @@ async def _run_recovery(request_id: str, query_text: str, pipeline_result) -> No
         prefilter_enabled=SETTINGS.rerank_prefilter_enabled,
         prefilter_lexical_top_n=SETTINGS.rerank_prefilter_lexical_top_n,
         prefilter_retrieval_reserve=SETTINGS.rerank_prefilter_retrieval_reserve,
+        dense_rerank_enabled=SETTINGS.dense_rerank_enabled,
     )
     _PENDING_ANSWERS[request_id] = _serialize_outcome(outcome)
 

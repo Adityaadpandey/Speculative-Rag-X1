@@ -31,12 +31,13 @@ and synthesis never run for a query the fast path already got right.
 """
 
 import time
+from functools import lru_cache
 from typing import Literal
 
 from pydantic import BaseModel
 
 from speculative_rag.answer_status import FinalAnswerStatus, combine_verdict
-from speculative_rag.generation import prefilter_rerank_candidates
+from speculative_rag.generation import complete_answer_from_evidence, prefilter_rerank_candidates
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import PipelineResult, RagOutcome
 from speculative_rag.reflect import (
@@ -74,6 +75,25 @@ class AnswerOutcome(BaseModel):
     pipeline_result: PipelineResult
 
 
+@lru_cache(maxsize=1)
+def _get_dense_embedder():
+    # Local import: this module is imported by webapp/main.py, so a
+    # module-level import here would pull sentence-transformers (~1GB RSS
+    # once loaded) into every process that imports answer_orchestrator,
+    # including the free-tier hot-path process, regardless of whether dense
+    # rerank is ever enabled. lru_cache keeps the model loaded across calls
+    # once a process actually does enable it, instead of reloading per request.
+    from speculative_rag.embedding import Embedder
+
+    return Embedder()
+
+
+def _default_dense_rerank(query_text: str, candidates: list):
+    from speculative_rag.dense_rerank import dense_rerank
+
+    return dense_rerank(query_text, candidates, _get_dense_embedder())
+
+
 def resolve_answer(
     query_text: str,
     embedder,
@@ -90,6 +110,8 @@ def resolve_answer(
     prefilter_enabled: bool = False,
     prefilter_lexical_top_n: int = 8,
     prefilter_retrieval_reserve: int = 5,
+    dense_rerank_enabled: bool = False,
+    dense_rerank=None,
 ) -> AnswerOutcome:
     """Synchronous convenience wrapper: runs the fast path (run_pipeline)
     and the recovery chain (resolve_recovery) back to back. Used by CLI/eval
@@ -118,6 +140,8 @@ def resolve_answer(
         prefilter_enabled=prefilter_enabled,
         prefilter_lexical_top_n=prefilter_lexical_top_n,
         prefilter_retrieval_reserve=prefilter_retrieval_reserve,
+        dense_rerank_enabled=dense_rerank_enabled,
+        dense_rerank=dense_rerank,
     )
 
 
@@ -131,6 +155,8 @@ def resolve_recovery(
     prefilter_enabled: bool = False,
     prefilter_lexical_top_n: int = 8,
     prefilter_retrieval_reserve: int = 5,
+    dense_rerank_enabled: bool = False,
+    dense_rerank=None,
     on_stage=None,
 ) -> AnswerOutcome:
     """The LLM validation/rerank+regenerate/synthesis chain, taking an
@@ -157,6 +183,7 @@ def resolve_recovery(
     check_groundedness = check_groundedness or check_groundedness_llm
     rerank_and_generate = rerank_and_generate or rerank_and_generate_llm
     synthesize_answer = synthesize_answer or synthesize_answer_llm
+    dense_rerank = dense_rerank or _default_dense_rerank
     on_stage = on_stage or (lambda stage: None)
 
     start = time.perf_counter()
@@ -250,6 +277,15 @@ def resolve_recovery(
             initial_answerable=initial_answerable,
         )
 
+    # Optional async-only dense rerank over the pool BM25 already retrieved
+    # -- ships disabled by default (SETTINGS.dense_rerank_enabled), see
+    # dense_rerank.py and config.py for why. Reorders only, never drops a
+    # candidate, so this can only help the prefilter/LLM-rerank stages below
+    # find the right passage sooner, never hide one from them.
+    if dense_rerank_enabled:
+        on_stage("dense_reranking")
+        candidates = dense_rerank(query_text, candidates)
+
     # Optional non-LLM prefilter narrowing the pool before it's handed to the
     # LLM rerank+regenerate call below -- ships disabled by default (see
     # config.SETTINGS.rerank_prefilter_enabled); prefilter_rerank_candidates
@@ -296,9 +332,17 @@ def resolve_recovery(
     regenerated_answerable = False
 
     if rerank_verdict.answerable and rerank_verdict.answer_text:
+        # Preserve the LLM's semantic selection, but do not let a terse
+        # prefix hide explanation that is explicitly present in the evidence.
+        # This turns "India is a peninsula" into the complete source sentence
+        # when the passage continues with the surrounding seas.
+        regenerated_answer = complete_answer_from_evidence(
+            rerank_verdict.answer_text,
+            evidence_texts,
+        )
         combined_source_text = " ".join(evidence_texts)
         on_stage("verifying")
-        verdict2 = check_groundedness(query_text, rerank_verdict.answer_text, combined_source_text)
+        verdict2 = check_groundedness(query_text, regenerated_answer, combined_source_text)
         regenerated_answerable = verdict2.answers_query
         status2, reason2 = combine_verdict(RagOutcome.ANSWERED, verdict2)
         regenerated_answer_valid = status2 == FinalAnswerStatus.ANSWERED
@@ -314,7 +358,7 @@ def resolve_recovery(
                 reranked_answer_generated=True,
                 regenerated_answer_valid=True,
                 regenerated_answerable=regenerated_answerable,
-                answer_text=rerank_verdict.answer_text,
+                answer_text=regenerated_answer,
                 source_passage_ids=[c.chunk.source_passage_id for c in evidence_chunks],
                 answer_engine="claude_regenerated",
             )
