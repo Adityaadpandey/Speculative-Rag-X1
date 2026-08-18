@@ -429,6 +429,7 @@ def _fake_outcome(**overrides):
         regenerated_answer_valid=True,
         regenerated_answerable=True,
         synthesis_triggered=False,
+        answer_engine="claude_regenerated",
         total_end_to_end_latency_ms=1523.9,
         pipeline_result=PipelineResult(
             outcome=RagOutcome.ANSWERED,
@@ -477,6 +478,7 @@ def test_post_answer_returns_fast_provisional_shape_then_polling_returns_final_a
     assert result["final_status"] == "answered"
     assert "atomic bomb" in result["answer"]["text"]
     assert result["answer"]["source_passage_ids"] == ["p_ww2"]
+    assert result["answer"]["answer_engine"] == "claude_regenerated"
     assert result["instrumentation"]["rerank_triggered"] is True
     assert result["instrumentation"]["reranked_answer_generated"] is True
     assert result["instrumentation"]["regenerated_answer_valid"] is True

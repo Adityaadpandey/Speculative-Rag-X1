@@ -167,7 +167,11 @@ def _serialize_outcome(outcome) -> dict:
         "status": "done",
         "final_status": outcome.final_status.value,
         "answer": (
-            {"text": outcome.answer_text, "source_passage_ids": outcome.source_passage_ids}
+            {
+                "text": outcome.answer_text,
+                "source_passage_ids": outcome.source_passage_ids,
+                "answer_engine": outcome.answer_engine,
+            }
             if outcome.answer_text is not None
             else None
         ),
@@ -205,7 +209,13 @@ def _stage_reporter(request_id: str):
 
 async def _run_recovery(request_id: str, query_text: str, pipeline_result) -> None:
     outcome = await asyncio.to_thread(
-        resolve_recovery, query_text, pipeline_result, on_stage=_stage_reporter(request_id)
+        resolve_recovery,
+        query_text,
+        pipeline_result,
+        on_stage=_stage_reporter(request_id),
+        prefilter_enabled=SETTINGS.rerank_prefilter_enabled,
+        prefilter_lexical_top_n=SETTINGS.rerank_prefilter_lexical_top_n,
+        prefilter_retrieval_reserve=SETTINGS.rerank_prefilter_retrieval_reserve,
     )
     _PENDING_ANSWERS[request_id] = _serialize_outcome(outcome)
 
@@ -250,6 +260,7 @@ async def post_answer(body: AnswerRequest, background_tasks: BackgroundTasks) ->
         fast_answer = {
             "text": pipeline_result.answer.text,
             "source_passage_ids": [pipeline_result.answer.source_passage_id],
+            "answer_engine": "extractive",
         }
 
     return {
