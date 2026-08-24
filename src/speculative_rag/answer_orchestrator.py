@@ -112,6 +112,7 @@ def resolve_answer(
     evidence_top_n: int = 5,
     check_groundedness=None,
     rerank_and_generate=None,
+    rerank_passages=None,
     synthesize_answer=None,
     on_stage=None,
     prefilter_enabled: bool = False,
@@ -144,6 +145,7 @@ def resolve_answer(
         pipeline_result,
         check_groundedness=check_groundedness,
         rerank_and_generate=rerank_and_generate,
+        rerank_passages=rerank_passages,
         synthesize_answer=synthesize_answer,
         on_stage=on_stage,
         prefilter_enabled=prefilter_enabled,
@@ -162,6 +164,7 @@ def resolve_recovery(
     *,
     check_groundedness=None,
     rerank_and_generate=None,
+    rerank_passages=None,
     synthesize_answer=None,
     prefilter_enabled: bool = False,
     prefilter_lexical_top_n: int = 8,
@@ -195,6 +198,7 @@ def resolve_recovery(
     # tests, the same pattern webapp/main.py already uses for reflect.py.
     check_groundedness = check_groundedness or check_groundedness_llm
     rerank_and_generate = rerank_and_generate or rerank_and_generate_llm
+    rerank_passages = rerank_passages or rerank_passages_llm
     synthesize_answer = synthesize_answer or synthesize_answer_llm
     dense_rerank = dense_rerank or _default_dense_rerank
     on_answer_delta = on_answer_delta or (lambda delta: None)
@@ -332,7 +336,7 @@ def resolve_recovery(
         evidence_chunks = [by_chunk_id[sid] for sid in selected_source_ids if sid in by_chunk_id]
         evidence_texts = [c.chunk.text for c in evidence_chunks]
     else:
-        selection = rerank_passages_llm(query_text, rerank_candidates)
+        selection = rerank_passages(query_text, rerank_candidates)
         selected_source_ids = [s.source_id for s in selection.selected_sources]
         evidence_chunks = [by_chunk_id[sid] for sid in selected_source_ids if sid in by_chunk_id]
         evidence_texts = [c.chunk.text for c in evidence_chunks]
