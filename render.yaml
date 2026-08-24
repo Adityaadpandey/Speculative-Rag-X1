@@ -12,6 +12,10 @@ services:
     name: speculative-rag-webapp
     runtime: docker
     plan: free
+    region: frankfurt  # matches the Qdrant Cloud cluster's eu-central-1 (AWS Frankfurt) region --
+                        # unset before, which meant Render's default (Oregon, US West) vs. a
+                        # Frankfurt Qdrant cluster: a transatlantic hop on every retrieval call,
+                        # measured at ~175-215ms RTT alone (see results/latency_rag.md)
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/collections
     envVars:
@@ -19,7 +23,7 @@ services:
         sync: false
       - key: QDRANT_API_KEY
         sync: false
-      - key: ANTHROPIC_API_KEY
+      - key: OPENAI_API_KEY
         sync: false
       - key: SARVAM_API_KEY
         sync: false
