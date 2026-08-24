@@ -1,6 +1,6 @@
 """The web UI: a thin FastAPI HTTP layer over the same pipeline used
 everywhere else (pipeline.run_pipeline, stt.transcribe_audio,
-reflect.check_groundedness_llm). Loads one SparseEmbedder per language
+openai_reflect.check_groundedness). Loads one SparseEmbedder per language
 (BM25's tokenizer/stemmer setup is language-specific, see
 sparse_embedding.py) plus one Retriever per available Qdrant collection
 once at startup (module-level state), reused across requests -- the same
@@ -26,13 +26,13 @@ from speculative_rag.answer_status import combine_verdict
 from speculative_rag.config import BCP47_LANGUAGE_CODES, LANGUAGE_SOURCES, SETTINGS, get_qdrant_client
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import RagOutcome
-from speculative_rag.reflect import (
-    RerankCandidate,
-    check_groundedness_llm,
-    rerank_passages_llm,
-    stream_generate_answer_llm,
-    synthesize_answer_llm,
+from speculative_rag.openai_reflect import (
+    check_groundedness,
+    rerank_passages,
+    stream_generate_answer,
+    synthesize_answer,
 )
+from speculative_rag.reflect import RerankCandidate
 from speculative_rag.retrieval import Retriever
 from speculative_rag.sparse_embedding import SparseEmbedder
 from speculative_rag.stt import SarvamAPIKeyMissingError, transcribe_audio
@@ -104,7 +104,7 @@ async def get_collections() -> dict:
     return {
         "collections": _COLLECTIONS,
         "sarvam_key_configured": bool(os.environ.get("SARVAM_API_KEY")),
-        "anthropic_key_configured": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "openai_key_configured": bool(os.environ.get("OPENAI_API_KEY")),
     }
 
 
@@ -277,14 +277,17 @@ def _answer_reporter(request_id: str):
 
 async def _run_recovery(request_id: str, query_text: str, pipeline_result) -> None:
     try:
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            raise RuntimeError("ANTHROPIC_API_KEY is not configured")
+        if not os.environ.get("OPENAI_API_KEY"):
+            raise RuntimeError("OPENAI_API_KEY is not configured")
         outcome = await asyncio.to_thread(
             resolve_recovery,
             query_text,
             pipeline_result,
+            check_groundedness=check_groundedness,
+            rerank_passages=rerank_passages,
+            synthesize_answer=synthesize_answer,
             on_stage=_stage_reporter(request_id),
-            stream_answer=stream_generate_answer_llm,
+            stream_answer=stream_generate_answer,
             on_answer_delta=_answer_reporter(request_id),
             prefilter_enabled=SETTINGS.rerank_prefilter_enabled,
             prefilter_lexical_top_n=SETTINGS.rerank_prefilter_lexical_top_n,
@@ -399,7 +402,7 @@ async def post_reflect(body: ReflectRequest) -> JSONResponse | dict:
     source_text = retrieval.top.chunk.text if retrieval.top is not None else ""
 
     reflect_start = time.perf_counter()
-    verdict = check_groundedness_llm(body.query_text, body.answer_text, source_text)
+    verdict = check_groundedness(body.query_text, body.answer_text, source_text)
     reflect_ms = (time.perf_counter() - reflect_start) * 1000.0
 
     final_status, reason = combine_verdict(RagOutcome.ANSWERED, verdict)
@@ -441,7 +444,7 @@ async def post_rerank(body: RerankRequest) -> JSONResponse | dict:
 
     by_chunk_id = {c.chunk.chunk_id: c for c in candidates}
     rerank_start = time.perf_counter()
-    verdict = rerank_passages_llm(
+    verdict = rerank_passages(
         body.query_text, [RerankCandidate(source_id=c.chunk.chunk_id, text=c.chunk.text) for c in candidates]
     )
     rerank_ms = (time.perf_counter() - rerank_start) * 1000.0
@@ -485,7 +488,7 @@ async def post_synthesize(body: SynthesizeRequest) -> JSONResponse | dict:
         return JSONResponse(status_code=404, content={"error": "no candidates retrieved for synthesis"})
 
     synth_start = time.perf_counter()
-    verdict = synthesize_answer_llm(body.query_text, [c.chunk.text for c in candidates])
+    verdict = synthesize_answer(body.query_text, [c.chunk.text for c in candidates])
     synth_ms = (time.perf_counter() - synth_start) * 1000.0
 
     sources = [

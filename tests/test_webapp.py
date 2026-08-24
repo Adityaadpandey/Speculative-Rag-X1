@@ -21,7 +21,7 @@ def test_get_collections_returns_parsed_list_and_key_flags(monkeypatch):
         [{"language": "hi", "strategy": "native"}, {"language": "en", "strategy": "sliding_window"}],
     )
     monkeypatch.setenv("SARVAM_API_KEY", "test-key")
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     response = client.get("/api/collections")
     assert response.status_code == 200
@@ -31,7 +31,7 @@ def test_get_collections_returns_parsed_list_and_key_flags(monkeypatch):
         {"language": "en", "strategy": "sliding_window"},
     ]
     assert data["sarvam_key_configured"] is True
-    assert data["anthropic_key_configured"] is False
+    assert data["openai_key_configured"] is False
 
 
 def test_parse_collection_name_recognizes_known_language_strategy_pairs():
@@ -190,7 +190,7 @@ def test_post_reflect_returns_grounded_verdict_shape(monkeypatch):
             reasoning="Matches the source directly.",
         )
 
-    monkeypatch.setattr(webapp_main, "check_groundedness_llm", fake_check_groundedness_llm)
+    monkeypatch.setattr(webapp_main, "check_groundedness", fake_check_groundedness_llm)
 
     response = client.post(
         "/api/reflect",
@@ -233,7 +233,7 @@ def test_post_reflect_ungrounded_verdict_maps_to_not_answered_family(monkeypatch
             reasoning="On-topic but never states the specific fact asked for.",
         )
 
-    monkeypatch.setattr(webapp_main, "check_groundedness_llm", fake_check_groundedness_llm)
+    monkeypatch.setattr(webapp_main, "check_groundedness", fake_check_groundedness_llm)
 
     response = client.post(
         "/api/reflect",
@@ -281,7 +281,7 @@ def test_post_synthesize_returns_answer_when_answerable(monkeypatch):
             reasoning="Combines founding year and IPO year.",
         )
 
-    monkeypatch.setattr(webapp_main, "synthesize_answer_llm", fake_synthesize_answer_llm)
+    monkeypatch.setattr(webapp_main, "synthesize_answer", fake_synthesize_answer_llm)
 
     response = client.post(
         "/api/synthesize",
@@ -308,7 +308,7 @@ def test_post_synthesize_returns_not_answerable_shape(monkeypatch):
     def fake_synthesize_answer_llm(query_text, candidate_texts):
         return SynthesisVerdict(answerable=False, answer_text="", source_indices=[], reasoning="Missing.")
 
-    monkeypatch.setattr(webapp_main, "synthesize_answer_llm", fake_synthesize_answer_llm)
+    monkeypatch.setattr(webapp_main, "synthesize_answer", fake_synthesize_answer_llm)
 
     response = client.post(
         "/api/synthesize",
@@ -355,7 +355,7 @@ def test_post_rerank_returns_structured_selected_sources(monkeypatch):
             reasoning="Candidate 1 defines a corporation.",
         )
 
-    monkeypatch.setattr(webapp_main, "rerank_passages_llm", fake_rerank_passages_llm)
+    monkeypatch.setattr(webapp_main, "rerank_passages", fake_rerank_passages_llm)
 
     response = client.post(
         "/api/rerank",
@@ -388,7 +388,7 @@ def test_post_rerank_returns_empty_selection_when_nothing_relevant(monkeypatch):
     def fake_rerank_passages_llm(query_text, candidates):
         return RerankVerdict(selected_sources=[], answerable=False, reasoning="No candidate answers this.")
 
-    monkeypatch.setattr(webapp_main, "rerank_passages_llm", fake_rerank_passages_llm)
+    monkeypatch.setattr(webapp_main, "rerank_passages", fake_rerank_passages_llm)
 
     response = client.post(
         "/api/rerank",
