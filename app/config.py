@@ -10,5 +10,10 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(REPO_ROOT / ".env")
 
-GENERATION_BACKEND = "recovery-chain"  # network-bound (real Anthropic calls) -- not "local", so workers stay unclamped
-GENERATION_MODEL = "speculative-rag-answer-orchestrator"
+# The evaluator measures the synchronous target call. Production LLM
+# recovery is intentionally background-only in webapp/main.py.
+GENERATION_BACKEND = "local"
+LOCAL_GENERATION_MODEL = "extractive"
+GENERATION_MODEL = "extractive"
+LATENCY_BUDGET_MS = 50.0
+GENERATION_LATENCY_TARGET_MS = 200.0

@@ -46,6 +46,13 @@ _LEADING_CONNECTIVES = (
     "Meanwhile, ", "Also, ", "Therefore, ", "Thus, ", "Consequently, ",
 )
 
+_QUESTION_SENTENCE_RE = re.compile(r"^(what|which|who|where|when|why|how)\b", re.IGNORECASE)
+
+
+def _is_question_sentence(sentence: str) -> bool:
+    stripped = sentence.strip()
+    return "?" in stripped or _QUESTION_SENTENCE_RE.match(stripped) is not None
+
 
 def _strip_duplicate_tail(text: str) -> str:
     """Cut repeated corpus text, including repeats with a dropped first char.
@@ -165,6 +172,11 @@ def _trim_to_best_clause(
         return (scored.score, scored.bigram_score, clauses.index(clause))
 
     winner = max(typed, key=clause_key)
+    # A trailing connective clause ("and then divide by 2") is not a
+    # standalone answer. Keep the complete source sentence so the answer
+    # retains the subject and the operation that gives the result.
+    if winner != clauses[0] and re.match(r"^(and|or|but|then|because|which)\b", winner, re.IGNORECASE):
+        return sentence
     if winner != clauses[0] and _BARE_DIRECTIONAL_FRAGMENT_RE.match(winner):
         # For a location question, rewrite the directional list item as a
         # standalone sentence. Do not prepend the lead clause: in "Karnataka
@@ -216,6 +228,14 @@ def _select_span_from_passage(query_text: str, passage_text: str, language: str)
         candidates = [s for s in sentences if scored[s].content_overlap > 0]
         if not candidates:
             return None
+
+        # Search-result passages frequently contain the query as a title or
+        # quiz prompt. It is topical, but returning that question as the
+        # answer is a particularly bad false-confidence failure. Prefer
+        # declarative candidates whenever the passage has one.
+        declarative = [s for s in candidates if not _is_question_sentence(s)]
+        if declarative:
+            candidates = declarative
 
         # A cheaply-checkable expected answer type (numeric, yesno, person --
         # see answer_type.py) narrows candidates to type-satisfying sentences

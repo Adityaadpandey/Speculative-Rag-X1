@@ -9,8 +9,8 @@ has no equivalent budget expectation on principle: a target calling a
 hosted API is bound by real network latency no config value can shrink,
 so GENERATION_LATENCY_TARGET_MS below is purely this suite's own
 reference point for the report, never a constraint on the target itself
--- override with EVAL_GENERATION_LATENCY_TARGET_MS if 1500ms isn't the
-right bar for your use case.
+-- override with EVAL_GENERATION_LATENCY_TARGET_MS, or declare
+GENERATION_LATENCY_TARGET_MS in the target's optional app.config surface.
 """
 import os
 import statistics
@@ -18,7 +18,7 @@ import statistics
 from eval import target
 from eval.pipeline import ExampleResult
 
-GENERATION_LATENCY_TARGET_MS = float(os.environ.get("EVAL_GENERATION_LATENCY_TARGET_MS", 1500))
+DEFAULT_GENERATION_LATENCY_TARGET_MS = float(os.environ.get("EVAL_GENERATION_LATENCY_TARGET_MS", 1500))
 DEFAULT_RETRIEVAL_LATENCY_BUDGET_MS = float(os.environ.get("EVAL_RETRIEVAL_LATENCY_BUDGET_MS", 50))
 
 
@@ -44,6 +44,9 @@ def _block(values: list[float]) -> dict:
 
 def run(results: list[ExampleResult]) -> dict:
     latency_budget_ms = target.optional_config("LATENCY_BUDGET_MS", default=DEFAULT_RETRIEVAL_LATENCY_BUDGET_MS)
+    generation_target_ms = target.optional_config(
+        "GENERATION_LATENCY_TARGET_MS", default=DEFAULT_GENERATION_LATENCY_TARGET_MS
+    )
 
     usable = [r for r in results if r.error is None]
 
@@ -64,6 +67,6 @@ def run(results: list[ExampleResult]) -> dict:
         "generation": _block(generation_ms),
         "retrieval_latency_budget_ms": latency_budget_ms,
         "retrieval_within_budget": retrieval_p95 <= latency_budget_ms,
-        "generation_latency_target_ms": GENERATION_LATENCY_TARGET_MS,
-        "generation_within_target": generation_p95 <= GENERATION_LATENCY_TARGET_MS,
+        "generation_latency_target_ms": generation_target_ms,
+        "generation_within_target": generation_p95 <= generation_target_ms,
     }

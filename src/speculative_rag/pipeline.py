@@ -10,7 +10,12 @@ from contextlib import contextmanager
 
 from speculative_rag.answer_type import expected_answer_type, span_satisfies_expected_type
 from speculative_rag.generation import complete_answer_from_evidence, select_best_evidence
-from speculative_rag.guardrails import check_unsafe_input, groundedness_score, is_off_topic
+from speculative_rag.guardrails import (
+    check_unsafe_input,
+    groundedness_score,
+    is_off_topic,
+    plausible_extractive_answer,
+)
 from speculative_rag.pipeline_schemas import Answer, PipelineResult, RagOutcome, StageTiming
 
 
@@ -120,6 +125,17 @@ def run_pipeline(
             refusal_reason=(
                 f"extracted span does not contain the {expected_type} answer expected by the query"
             ),
+            top_score=top_score,
+            timings=timer.timings,
+            num_retrieved=num_retrieved,
+            num_evidence_candidates=len(evidence_candidates),
+            retrieved_chunks=retrieval.scored_chunks,
+        )
+
+    if not plausible_extractive_answer(query_text, span, matched_tokens, chosen.chunk.language):
+        return PipelineResult(
+            outcome=RagOutcome.INSUFFICIENT_EVIDENCE,
+            refusal_reason="retrieved text is topical but does not contain a complete answer",
             top_score=top_score,
             timings=timer.timings,
             num_retrieved=num_retrieved,

@@ -70,6 +70,21 @@ class ScoredSentence:
     matched_tokens: list[str]
 
 
+def content_query_coverage(query_tokens: list[str], matched_tokens: list[str], language: str) -> float:
+    """Return the fraction of meaningful query terms found in a span.
+
+    A single shared topical word is not enough evidence that a passage answers
+    a multi-part question.  This cheap coverage signal is used as an
+    abstention guard; it does not replace the weighted ranking score.
+    """
+    stopwords = _STOPWORDS.get(language, frozenset())
+    content = {token for token in query_tokens if token not in stopwords}
+    if not content:
+        return 0.0
+    matched = set(matched_tokens)
+    return len(content & matched) / len(content)
+
+
 def score_sentence(query_tokens: list[str], sentence_tokens: list[str], language: str) -> ScoredSentence:
     """Weighted lexical relevance of one candidate sentence against a query.
     `language` is required (never assumed/defaulted to English) since the

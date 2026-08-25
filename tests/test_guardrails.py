@@ -1,4 +1,9 @@
-from speculative_rag.guardrails import check_unsafe_input, groundedness_score, is_off_topic
+from speculative_rag.guardrails import (
+    check_unsafe_input,
+    groundedness_score,
+    is_off_topic,
+    plausible_extractive_answer,
+)
 
 
 def test_check_unsafe_input_flags_bomb_query():
@@ -22,6 +27,24 @@ def test_is_off_topic_true_below_threshold():
 def test_is_off_topic_false_at_or_above_threshold():
     assert is_off_topic(11.93, 1e-6) is False
     assert is_off_topic(1e-6, 1e-6) is False
+
+
+def test_plausible_extractive_answer_rejects_a_retrieved_question():
+    assert not plausible_extractive_answer(
+        "what is the capital of france",
+        "What is the capital of France?",
+        ["capital", "france"],
+        "en",
+    )
+
+
+def test_plausible_extractive_answer_rejects_reversed_direction():
+    assert not plausible_extractive_answer(
+        "hexadecimal numbers to binary numbers",
+        "To convert binary numbers into hexadecimal numbers.",
+        ["hexadecimal", "numbers", "to", "binary"],
+        "en",
+    )
 
 
 def test_groundedness_score_full_containment_is_one():

@@ -70,6 +70,12 @@ def _chunk_text(text: str, size: int, overlap: int) -> list[str]:
 def build_index(examples: list[EvalExample]):
     import faiss
 
+    # Keep FAISS single-threaded in the in-process evaluator. On macOS,
+    # combining FAISS OpenMP workers with Torch/MKL workers can crash the
+    # interpreter during HNSW construction rather than raising Python's
+    # exception machinery.
+    faiss.omp_set_num_threads(1)
+
     from eval import target
 
     embedder = target.get_embedder()

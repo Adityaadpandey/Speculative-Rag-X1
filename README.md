@@ -119,6 +119,12 @@ Each script in `scripts/run_*_eval.py` reproduces one table in `results/`:
 
 `scripts/ingest_production_corpus.py` builds the Qdrant collections these all run against; `scripts/benchmark.py` is a standalone timing harness.
 
+### Independent evaluation runbook
+
+The repeatable wiring instructions for attaching `rag-local-eval-loop` to this or another Task #2 submission are in [`docs/EVALUATION_RUNBOOK.md`](docs/EVALUATION_RUNBOOK.md). The latest 50-answerable/50-unanswerable report is [`results/20260825T054515Z.json`](results/20260825T054515Z.json).
+
+Latest measured values: Recall@5 **90%**, faithful rate **92.31%**, correctness **57.14%**, false confidence **34%**, retrieval P95 **13.67 ms**, and generation P95 **0.76 ms**. The declared latency targets pass.
+
 ## Testing
 
 ```bash

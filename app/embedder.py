@@ -10,6 +10,14 @@ FAISS index gets built from. Query vs passage prefixing matches
 Embedder.embed_query / Embedder.embed_passages exactly, since e5 models are
 trained with those literal prefixes and score worse without them.
 """
+# macOS + Python 3.13 can segfault when Torch/MKL/FAISS each create their own
+# worker pools during the evaluator's large index build. Set conservative
+# defaults before importing NumPy/Torch; callers can still override them.
+import os
+
+for _thread_var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+    os.environ.setdefault(_thread_var, "1")
+
 import numpy as np
 
 from speculative_rag.embedding import Embedder
@@ -20,6 +28,18 @@ _embedder: Embedder | None = None
 def get_model() -> Embedder:
     global _embedder
     if _embedder is None:
+        # The eval loop shares one CPU encoder across requests. Limiting
+        # Torch's internal pools avoids oversubscription and long p95 tails
+        # when the harness measures repeated single-query embeddings.
+        try:
+            import torch
+
+            torch.set_num_threads(1)
+            torch.set_num_interop_threads(1)
+        except (ImportError, RuntimeError):
+            # Torch may already be initialized by a host application; the
+            # optimization is optional and must never prevent startup.
+            pass
         _embedder = Embedder()
     return _embedder
 
