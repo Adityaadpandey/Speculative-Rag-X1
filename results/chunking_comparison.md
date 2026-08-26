@@ -1,0 +1,26 @@
+| language | strategy | k | recall@k | num_queries | num_chunks |
+|---|---|---|---|---|---|
+| hi | native | 1 | 0.140 | 300 | 2994 |
+| hi | native | 5 | 0.383 | 300 | 2994 |
+| hi | native | 10 | 0.497 | 300 | 2994 |
+| hi | sliding_window | 1 | 0.163 | 300 | 7035 |
+| hi | sliding_window | 5 | 0.397 | 300 | 7035 |
+| hi | sliding_window | 10 | 0.517 | 300 | 7035 |
+| hi | sentence | 1 | 0.160 | 300 | 6714 |
+| hi | sentence | 5 | 0.383 | 300 | 6714 |
+| hi | sentence | 10 | 0.493 | 300 | 6714 |
+| hi | metadata | 1 | 0.140 | 300 | 2994 |
+| hi | metadata | 5 | 0.383 | 300 | 2994 |
+| hi | metadata | 10 | 0.497 | 300 | 2994 |
+| en | native | 1 | 0.327 | 300 | 2994 |
+| en | native | 5 | 0.807 | 300 | 2994 |
+| en | native | 10 | 0.957 | 300 | 2994 |
+| en | sliding_window | 1 | 0.320 | 300 | 5906 |
+| en | sliding_window | 5 | 0.793 | 300 | 5906 |
+| en | sliding_window | 10 | 0.957 | 300 | 5906 |
+| en | sentence | 1 | 0.293 | 300 | 6052 |
+| en | sentence | 5 | 0.803 | 300 | 6052 |
+| en | sentence | 10 | 0.947 | 300 | 6052 |
+| en | metadata | 1 | 0.327 | 300 | 2994 |
+| en | metadata | 5 | 0.807 | 300 | 2994 |
+| en | metadata | 10 | 0.957 | 300 | 2994 |

@@ -1,0 +1,111 @@
+{
+  "meta": {
+    "target_root": "/Users/aditya/Projects/Speculative-Rag",
+    "generation_backend": "recovery-chain",
+    "generation_model_hint": "speculative-rag-answer-orchestrator",
+    "language": "hin",
+    "split": "validation",
+    "num_answerable": 3,
+    "num_unanswerable": 3,
+    "num_examples": 6,
+    "num_chunks": 133,
+    "top_k": 5,
+    "seed": 42,
+    "num_errored": 0
+  },
+  "retrieval": {
+    "check": "retrieval (reference-based)",
+    "num_evaluated": 3,
+    "top_k": 5,
+    "cross_lingual": {
+      "recall_at_k": {
+        "1": 0.3333,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "mrr": 0.6667
+    },
+    "same_language": {
+      "recall_at_k": {
+        "1": 0.3333,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "mrr": 0.6667
+    }
+  },
+  "faithfulness": {
+    "check": "faithfulness / hallucination (reference-free, LLM-as-judge)",
+    "num_evaluated": 4,
+    "faithful_rate": 0.75,
+    "hallucination_rate": 0.25,
+    "num_confident_answers": 4,
+    "self_report_precision": 0.75,
+    "self_report_disagreements": [
+      {
+        "query": "hexadecimal numbers to binary numbers",
+        "answer": "To convert a hexadecimal number to binary, replace each hexadecimal digit with its corresponding 4-bit binary value, using A–F for 10–15; group or pad the binary digits in sets of four as needed. For ",
+        "judge_reason": "The context supports binary-to-hex conversion and the D5CF example, but it does not state how to convert hexadecimal to binary."
+      }
+    ],
+    "hallucinated_examples": [
+      {
+        "query": "hexadecimal numbers to binary numbers",
+        "answer": "To convert a hexadecimal number to binary, replace each hexadecimal digit with its corresponding 4-bit binary value, using A–F for 10–15; group or pad the binary digits in sets of four as needed. For ",
+        "judge_reason": "The context supports binary-to-hex conversion and the D5CF example, but it does not state how to convert hexadecimal to binary."
+      }
+    ]
+  },
+  "correctness": {
+    "check": "correctness (reference-based, LLM-as-judge)",
+    "num_evaluated": 3,
+    "correct_rate": 1.0,
+    "incorrect_examples": []
+  },
+  "reliability": {
+    "check": "reliability / \"lying factor\" (answerable-vs-answered 2x2)",
+    "num_answerable_evaluated": 3,
+    "num_unanswerable_evaluated": 3,
+    "false_refusal_rate": 0.0,
+    "false_refusal_examples": [],
+    "false_confidence_rate": 0.3333,
+    "false_confidence_examples": [
+      {
+        "query": "hexadecimal numbers to binary numbers",
+        "fabricated_answer": "To convert a hexadecimal number to binary, replace each hexadecimal digit with its corresponding 4-bit binary value, using A–F for 10–15; group or pad the binary digits in sets of four as needed. For "
+      }
+    ]
+  },
+  "latency": {
+    "check": "latency",
+    "num_evaluated": 6,
+    "embed": {
+      "avg_ms": 23.75,
+      "p50_ms": 24.54,
+      "p95_ms": 38.21,
+      "p99_ms": 42.41
+    },
+    "search": {
+      "avg_ms": 0.07,
+      "p50_ms": 0.04,
+      "p95_ms": 0.21,
+      "p99_ms": 0.33
+    },
+    "retrieval_total": {
+      "avg_ms": 29.0,
+      "p50_ms": 27.39,
+      "p95_ms": 41.12,
+      "p99_ms": 43.04
+    },
+    "generation": {
+      "avg_ms": 9092.03,
+      "p50_ms": 8341.8,
+      "p95_ms": 16180.28,
+      "p99_ms": 16398.37
+    },
+    "retrieval_latency_budget_ms": 50.0,
+    "retrieval_within_budget": true,
+    "generation_latency_target_ms": 1500.0,
+    "generation_within_target": false
+  }
+}

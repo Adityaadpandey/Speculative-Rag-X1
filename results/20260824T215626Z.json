@@ -1,0 +1,211 @@
+{
+  "meta": {
+    "target_root": "/Users/aditya/Projects/Speculative-Rag",
+    "generation_backend": "recovery-chain",
+    "generation_model_hint": "speculative-rag-answer-orchestrator",
+    "language": "hin",
+    "split": "validation",
+    "num_answerable": 50,
+    "num_unanswerable": 50,
+    "num_examples": 100,
+    "num_chunks": 2391,
+    "top_k": 5,
+    "seed": 42,
+    "num_errored": 0
+  },
+  "retrieval": {
+    "check": "retrieval (reference-based)",
+    "num_evaluated": 50,
+    "top_k": 5,
+    "cross_lingual": {
+      "recall_at_k": {
+        "1": 0.56,
+        "3": 0.8,
+        "5": 0.9
+      },
+      "mrr": 0.693
+    },
+    "same_language": {
+      "recall_at_k": {
+        "1": 0.56,
+        "3": 0.8,
+        "5": 0.9
+      },
+      "mrr": 0.693
+    }
+  },
+  "faithfulness": {
+    "check": "faithfulness / hallucination (reference-free, LLM-as-judge)",
+    "num_evaluated": 78,
+    "faithful_rate": 0.9359,
+    "hallucination_rate": 0.0641,
+    "num_confident_answers": 78,
+    "self_report_precision": 0.9359,
+    "self_report_disagreements": [
+      {
+        "query": "how long for stitches to be removed",
+        "answer": "Stitches are typically removed about 14 days after surgery, give or take a few days, although some skin sutures may be removed after 5–8 days. Follow the timing provided by your healthcare provider.",
+        "judge_reason": "The 14-day timing is supported, but the 5–8 day removal claim is not directly supported by the context as a general statement."
+      },
+      {
+        "query": "how long do fly eggs live",
+        "answer": "Fly eggs typically live for less than a day before hatching; in warm conditions, maggots can emerge after about 8–20 hours.",
+        "judge_reason": "The context supports the 8–20 hour hatching claim, but it does not support the statement that fly eggs “typically live for less than a day” and instead says eggs hatch quickly."
+      },
+      {
+        "query": "why did laozi say that idea",
+        "answer": "Laozi developed Daoism because he thought Communism and Legalism were flawed attempts to create a better society. He sought a less strict approach that still provided some rules or guidelines for peop",
+        "judge_reason": "The context mentions Laozi and Daoism, but it does not support the claims about Communism, combining them, or seeking a less strict approach in those terms."
+      },
+      {
+        "query": "average american assets",
+        "answer": "I only have a fraction of the disposable income of the average American 32 yo however.",
+        "judge_reason": "The context includes that sentence only as a quoted comment, not as a supported factual claim about the answer itself."
+      },
+      {
+        "query": "how long to wait until pot plants ready to smoke",
+        "answer": "Expect roughly 4–6 months from seed to harvest in a typical grow, though the overall time can range from about 8 weeks to 7+ months depending on the growing method and vegetative period.",
+        "judge_reason": "The context supports 4–6 months and 8 weeks to 7+ months, but it does not support the phrase \"typical grow\" or the added generalization about growing method and vegetative period as stated."
+      }
+    ],
+    "hallucinated_examples": [
+      {
+        "query": "how long for stitches to be removed",
+        "answer": "Stitches are typically removed about 14 days after surgery, give or take a few days, although some skin sutures may be removed after 5–8 days. Follow the timing provided by your healthcare provider.",
+        "judge_reason": "The 14-day timing is supported, but the 5–8 day removal claim is not directly supported by the context as a general statement."
+      },
+      {
+        "query": "how long do fly eggs live",
+        "answer": "Fly eggs typically live for less than a day before hatching; in warm conditions, maggots can emerge after about 8–20 hours.",
+        "judge_reason": "The context supports the 8–20 hour hatching claim, but it does not support the statement that fly eggs “typically live for less than a day” and instead says eggs hatch quickly."
+      },
+      {
+        "query": "why did laozi say that idea",
+        "answer": "Laozi developed Daoism because he thought Communism and Legalism were flawed attempts to create a better society. He sought a less strict approach that still provided some rules or guidelines for peop",
+        "judge_reason": "The context mentions Laozi and Daoism, but it does not support the claims about Communism, combining them, or seeking a less strict approach in those terms."
+      },
+      {
+        "query": "average american assets",
+        "answer": "I only have a fraction of the disposable income of the average American 32 yo however.",
+        "judge_reason": "The context includes that sentence only as a quoted comment, not as a supported factual claim about the answer itself."
+      },
+      {
+        "query": "how long to wait until pot plants ready to smoke",
+        "answer": "Expect roughly 4–6 months from seed to harvest in a typical grow, though the overall time can range from about 8 weeks to 7+ months depending on the growing method and vegetative period.",
+        "judge_reason": "The context supports 4–6 months and 8 weeks to 7+ months, but it does not support the phrase \"typical grow\" or the added generalization about growing method and vegetative period as stated."
+      }
+    ]
+  },
+  "correctness": {
+    "check": "correctness (reference-based, LLM-as-judge)",
+    "num_evaluated": 47,
+    "correct_rate": 0.8085,
+    "incorrect_examples": [
+      {
+        "query": "what is the purpose of the passive-interface command?",
+        "reference_answer": "The purpose of the passive-interface command is it allows a routing protocol to forward updates out an interface that is missing its IP address allows a router to send routing updates on an interface ",
+        "answer": "Here is the output of the show ip eigrp neighbors after you enter the passive-interface command.",
+        "judge_reason": "The answer does not explain the purpose of passive-interface and instead gives unrelated output."
+      },
+      {
+        "query": "how long do fly eggs live",
+        "reference_answer": "An adults fly eggs usually live for 15 to 25 days.",
+        "answer": "Fly eggs typically live for less than a day before hatching; in warm conditions, maggots can emerge after about 8–20 hours.",
+        "judge_reason": "It gives a different lifespan than the reference answer."
+      },
+      {
+        "query": "do dolphins have the smell sense",
+        "reference_answer": "Yes,They were thought to lack the ability.",
+        "answer": "Whether or not these marine mammals rely on smell to locate food is unknown, however it may make sense for them to rely on smell if they do not have echolocation abilities or their ability to ecolocat",
+        "judge_reason": "The answer does not state the reference fact that dolphins have a smell sense and instead says it is unknown."
+      },
+      {
+        "query": "gas dryers running cost",
+        "reference_answer": "Gas dryers cost anywhere from about $350 to $1,600.",
+        "answer": "most dryers consume about 5000 watts (5 kilowatts) of energy.",
+        "judge_reason": "The answer discusses wattage and not the cost range for gas dryers."
+      },
+      {
+        "query": "what types of actions are controlled by smooth muscles",
+        "reference_answer": "Hormones, neurotransmitters and other chemicals such as calcium and potassium are types of actions that are controlled by smooth muscles.",
+        "answer": "Smooth muscles control involuntary actions or reactions, such as those occurring in blood vessels and hollow organs.",
+        "judge_reason": "The answer gives a general description of smooth muscle function, but it does not match the reference’s specific controlled actions/chemicals."
+      }
+    ]
+  },
+  "reliability": {
+    "check": "reliability / \"lying factor\" (answerable-vs-answered 2x2)",
+    "num_answerable_evaluated": 50,
+    "num_unanswerable_evaluated": 50,
+    "false_refusal_rate": 0.06,
+    "false_refusal_examples": [
+      {
+        "query": "when was star trek the voyage released",
+        "expected_answer": "The Star Trek Voyage was released on November 26, 1986."
+      },
+      {
+        "query": "how old would dean martin be",
+        "expected_answer": "Dean Martin was 78 years old."
+      },
+      {
+        "query": "can thinning vocal cords cause hoarseness",
+        "expected_answer": "Yes, thinning vocal cords cause hoarseness."
+      }
+    ],
+    "false_confidence_rate": 0.62,
+    "false_confidence_examples": [
+      {
+        "query": "difference from phycol and psychiatrist",
+        "fabricated_answer": "A therapist, on the other hand, can often get by with a masters degree in their chosen specialty.ost fields require a master’s degree, although doctorates are often necessary for clinical psychologist"
+      },
+      {
+        "query": "what is tlr development",
+        "fabricated_answer": "TLR development is a stage in which connections to the temporal lobe begin forming, preparing the brain for sequencing—such as ordering sounds for reading, letters and thoughts for writing, and steps "
+      },
+      {
+        "query": "tail wagging the dog originate",
+        "fabricated_answer": "“The tail wagging the dog” dates to the turn of the 20th century and appeared in print in 1907 in Von Arnum’s *Fraulein Schmidt*."
+      },
+      {
+        "query": "calculate distance deceleration",
+        "fabricated_answer": "3 Calculating Braking Distance 3.1 Influencing Factors Braking distance depends on: • the speed of the train when the brakes are applied; • the deceleration rate available with a full-service brake ap"
+      },
+      {
+        "query": "how to cook fried chicken legs",
+        "fabricated_answer": "Heat oil in a deep fryer or large skillet to 350°F (175°C). Shake drumsticks in a bag with flour, cornmeal, and salt to coat, then fry uncovered for 25–30 minutes, turning occasionally, until browned "
+      }
+    ]
+  },
+  "latency": {
+    "check": "latency",
+    "num_evaluated": 100,
+    "embed": {
+      "avg_ms": 22.7,
+      "p50_ms": 15.38,
+      "p95_ms": 66.07,
+      "p99_ms": 78.36
+    },
+    "search": {
+      "avg_ms": 0.12,
+      "p50_ms": 0.09,
+      "p95_ms": 0.21,
+      "p99_ms": 0.95
+    },
+    "retrieval_total": {
+      "avg_ms": 30.02,
+      "p50_ms": 27.94,
+      "p95_ms": 76.54,
+      "p99_ms": 79.43
+    },
+    "generation": {
+      "avg_ms": 12499.28,
+      "p50_ms": 12885.76,
+      "p95_ms": 22694.73,
+      "p99_ms": 23218.44
+    },
+    "retrieval_latency_budget_ms": 50.0,
+    "retrieval_within_budget": false,
+    "generation_latency_target_ms": 1500.0,
+    "generation_within_target": false
+  }
+}

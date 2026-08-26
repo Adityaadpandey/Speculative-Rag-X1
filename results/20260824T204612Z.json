@@ -1,0 +1,135 @@
+{
+  "meta": {
+    "target_root": "/Users/aditya/Projects/Speculative-Rag",
+    "generation_backend": "recovery-chain",
+    "generation_model_hint": "speculative-rag-answer-orchestrator",
+    "language": "hin",
+    "split": "validation",
+    "num_answerable": 3,
+    "num_unanswerable": 3,
+    "num_examples": 6,
+    "num_chunks": 133,
+    "top_k": 5,
+    "seed": 42,
+    "num_errored": 0
+  },
+  "retrieval": {
+    "check": "retrieval (reference-based)",
+    "num_evaluated": 3,
+    "top_k": 5,
+    "cross_lingual": {
+      "recall_at_k": {
+        "1": 0.3333,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "mrr": 0.6667
+    },
+    "same_language": {
+      "recall_at_k": {
+        "1": 0.3333,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "mrr": 0.6667
+    }
+  },
+  "faithfulness": {
+    "check": "faithfulness / hallucination (reference-free, LLM-as-judge)",
+    "num_evaluated": 5,
+    "faithful_rate": 0.4,
+    "hallucination_rate": 0.6,
+    "num_confident_answers": 5,
+    "self_report_precision": 0.4,
+    "self_report_disagreements": [
+      {
+        "query": "what is wealth gov and econ definition",
+        "answer": "In government and economics, wealth is defined as the value of all resources possessed by an individual or society, determined by the aggregate value of everything a person owns that can be exchanged ",
+        "judge_reason": "The context supports the definition of wealth, but it does not support the claims that countries typically measure wealth using GDP or that individuals measure it through net worth."
+      },
+      {
+        "query": "what is providing customer service",
+        "answer": "Providing customer service involves taking care of the customer's needs by delivering professional, helpful, and high-quality service and assistance before, during, and after their requirements are me",
+        "judge_reason": "The added claim about understanding what you're selling and being responsive to customer questions is not directly supported by the provided context."
+      },
+      {
+        "query": "how to find the surface area of a triangle",
+        "answer": "To find the area of a triangle, multiply the base by the height and then divide by 2. This formula comes from the fact that a triangle's area equals one-half the area of a parallelogram with the same ",
+        "judge_reason": "The context supports the area formula, but it does not mention that the triangle’s area equals one-half the area of a parallelogram with the same base and height."
+      }
+    ],
+    "hallucinated_examples": [
+      {
+        "query": "what is wealth gov and econ definition",
+        "answer": "In government and economics, wealth is defined as the value of all resources possessed by an individual or society, determined by the aggregate value of everything a person owns that can be exchanged ",
+        "judge_reason": "The context supports the definition of wealth, but it does not support the claims that countries typically measure wealth using GDP or that individuals measure it through net worth."
+      },
+      {
+        "query": "what is providing customer service",
+        "answer": "Providing customer service involves taking care of the customer's needs by delivering professional, helpful, and high-quality service and assistance before, during, and after their requirements are me",
+        "judge_reason": "The added claim about understanding what you're selling and being responsive to customer questions is not directly supported by the provided context."
+      },
+      {
+        "query": "how to find the surface area of a triangle",
+        "answer": "To find the area of a triangle, multiply the base by the height and then divide by 2. This formula comes from the fact that a triangle's area equals one-half the area of a parallelogram with the same ",
+        "judge_reason": "The context supports the area formula, but it does not mention that the triangle’s area equals one-half the area of a parallelogram with the same base and height."
+      }
+    ]
+  },
+  "correctness": {
+    "check": "correctness (reference-based, LLM-as-judge)",
+    "num_evaluated": 3,
+    "correct_rate": 1.0,
+    "incorrect_examples": []
+  },
+  "reliability": {
+    "check": "reliability / \"lying factor\" (answerable-vs-answered 2x2)",
+    "num_answerable_evaluated": 3,
+    "num_unanswerable_evaluated": 3,
+    "false_refusal_rate": 0.0,
+    "false_refusal_examples": [],
+    "false_confidence_rate": 0.6667,
+    "false_confidence_examples": [
+      {
+        "query": "what is wealth gov and econ definition",
+        "fabricated_answer": "In government and economics, wealth is defined as the value of all resources possessed by an individual or society, determined by the aggregate value of everything a person owns that can be exchanged "
+      },
+      {
+        "query": "hexadecimal numbers to binary numbers",
+        "fabricated_answer": "To convert binary numbers to hexadecimal numbers, divide the binary number into 4-bit groups, where each 4-bit group (representing values 0-15) converts to a single hexadecimal digit (0-9 and A-F). If"
+      }
+    ]
+  },
+  "latency": {
+    "check": "latency",
+    "num_evaluated": 6,
+    "embed": {
+      "avg_ms": 33.14,
+      "p50_ms": 21.12,
+      "p95_ms": 69.53,
+      "p99_ms": 70.45
+    },
+    "search": {
+      "avg_ms": 0.08,
+      "p50_ms": 0.05,
+      "p95_ms": 0.2,
+      "p99_ms": 0.31
+    },
+    "retrieval_total": {
+      "avg_ms": 49.28,
+      "p50_ms": 51.76,
+      "p95_ms": 70.24,
+      "p99_ms": 70.67
+    },
+    "generation": {
+      "avg_ms": 9848.2,
+      "p50_ms": 11495.62,
+      "p95_ms": 16122.89,
+      "p99_ms": 16994.83
+    },
+    "retrieval_latency_budget_ms": 50.0,
+    "retrieval_within_budget": false,
+    "generation_latency_target_ms": 1500.0,
+    "generation_within_target": false
+  }
+}

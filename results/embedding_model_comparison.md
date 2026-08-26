@@ -1,0 +1,20 @@
+| model | dim | language | k | recall@k | num_queries | num_chunks |
+|---|---|---|---|---|---|---|
+| intfloat/multilingual-e5-small | 384 | hi | 1 | 0.327 | 300 | 2994 |
+| intfloat/multilingual-e5-small | 384 | hi | 5 | 0.850 | 300 | 2994 |
+| intfloat/multilingual-e5-small | 384 | hi | 10 | 0.937 | 300 | 2994 |
+| intfloat/multilingual-e5-small | 384 | en | 1 | 0.337 | 300 | 2994 |
+| intfloat/multilingual-e5-small | 384 | en | 5 | 0.780 | 300 | 2994 |
+| intfloat/multilingual-e5-small | 384 | en | 10 | 0.867 | 300 | 2994 |
+| intfloat/multilingual-e5-small | 384 | ta | 1 | 0.237 | 300 | 2999 |
+| intfloat/multilingual-e5-small | 384 | ta | 5 | 0.633 | 300 | 2999 |
+| intfloat/multilingual-e5-small | 384 | ta | 10 | 0.740 | 300 | 2999 |
+| intfloat/multilingual-e5-base | 768 | hi | 1 | 0.380 | 300 | 2994 |
+| intfloat/multilingual-e5-base | 768 | hi | 5 | 0.847 | 300 | 2994 |
+| intfloat/multilingual-e5-base | 768 | hi | 10 | 0.930 | 300 | 2994 |
+| intfloat/multilingual-e5-base | 768 | en | 1 | 0.337 | 300 | 2994 |
+| intfloat/multilingual-e5-base | 768 | en | 5 | 0.780 | 300 | 2994 |
+| intfloat/multilingual-e5-base | 768 | en | 10 | 0.867 | 300 | 2994 |
+| intfloat/multilingual-e5-base | 768 | ta | 1 | 0.340 | 300 | 2999 |
+| intfloat/multilingual-e5-base | 768 | ta | 5 | 0.723 | 300 | 2999 |
+| intfloat/multilingual-e5-base | 768 | ta | 10 | 0.837 | 300 | 2999 |

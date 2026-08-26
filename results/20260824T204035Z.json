@@ -1,0 +1,198 @@
+{
+  "meta": {
+    "target_root": "/Users/aditya/Projects/Speculative-Rag",
+    "generation_backend": "cpu-lexical",
+    "generation_model_hint": "speculative-rag-extractive",
+    "language": "hin",
+    "split": "validation",
+    "num_answerable": 50,
+    "num_unanswerable": 50,
+    "num_examples": 100,
+    "num_chunks": 2391,
+    "top_k": 5,
+    "seed": 42,
+    "num_errored": 0
+  },
+  "retrieval": {
+    "check": "retrieval (reference-based)",
+    "num_evaluated": 50,
+    "top_k": 5,
+    "cross_lingual": {
+      "recall_at_k": {
+        "1": 0.56,
+        "3": 0.8,
+        "5": 0.9
+      },
+      "mrr": 0.693
+    },
+    "same_language": {
+      "recall_at_k": {
+        "1": 0.56,
+        "3": 0.8,
+        "5": 0.9
+      },
+      "mrr": 0.693
+    }
+  },
+  "faithfulness": {
+    "check": "faithfulness / hallucination (reference-free, LLM-as-judge)",
+    "num_evaluated": 99,
+    "faithful_rate": 0.9192,
+    "hallucination_rate": 0.0808,
+    "num_confident_answers": 99,
+    "self_report_precision": 0.9192,
+    "self_report_disagreements": [
+      {
+        "query": "gas dryers running cost",
+        "answer": "Gas dryers cost anywhere from about $350 to $1",
+        "judge_reason": "The answer is incomplete and truncates the supported price range, so it does not fully reflect the context."
+      },
+      {
+        "query": "why did laozi say that idea",
+        "answer": "Laozi thought that both Communism and Legalism were a little off with there ideas to re-create a better society, so he came up with the brilliant idea to combine them.",
+        "judge_reason": "The context supports Laozi’s Daoism and mentions Legalism only, but it does not mention Communism or combining those ideas."
+      },
+      {
+        "query": "what is the primary function",
+        "answer": "What is the primary function of the circulatory system?",
+        "judge_reason": "The answer only repeats the question and does not state the supported function from the context."
+      },
+      {
+        "query": "who owns the w hotel",
+        "answer": "Maryland firm now owns both local W hotels (Crain's) — A Maryland hotel investor has decided that owning one W in Chicago just isn't enough.",
+        "judge_reason": "The answer adds a headline and claims about a Maryland hotel investor and Chicago that are not supported by the provided context."
+      },
+      {
+        "query": "when was star trek the voyage released",
+        "answer": "Star Trek IV: The Voyage Home Behind The Scenes - Klingon Bird of Prey (1986) Movie HD - Duration: 2 minutes",
+        "judge_reason": "The answer changes the duration from 2 minutes, 38 seconds to 2 minutes, which is not supported by the context."
+      }
+    ],
+    "hallucinated_examples": [
+      {
+        "query": "gas dryers running cost",
+        "answer": "Gas dryers cost anywhere from about $350 to $1",
+        "judge_reason": "The answer is incomplete and truncates the supported price range, so it does not fully reflect the context."
+      },
+      {
+        "query": "why did laozi say that idea",
+        "answer": "Laozi thought that both Communism and Legalism were a little off with there ideas to re-create a better society, so he came up with the brilliant idea to combine them.",
+        "judge_reason": "The context supports Laozi’s Daoism and mentions Legalism only, but it does not mention Communism or combining those ideas."
+      },
+      {
+        "query": "what is the primary function",
+        "answer": "What is the primary function of the circulatory system?",
+        "judge_reason": "The answer only repeats the question and does not state the supported function from the context."
+      },
+      {
+        "query": "who owns the w hotel",
+        "answer": "Maryland firm now owns both local W hotels (Crain's) — A Maryland hotel investor has decided that owning one W in Chicago just isn't enough.",
+        "judge_reason": "The answer adds a headline and claims about a Maryland hotel investor and Chicago that are not supported by the provided context."
+      },
+      {
+        "query": "when was star trek the voyage released",
+        "answer": "Star Trek IV: The Voyage Home Behind The Scenes - Klingon Bird of Prey (1986) Movie HD - Duration: 2 minutes",
+        "judge_reason": "The answer changes the duration from 2 minutes, 38 seconds to 2 minutes, which is not supported by the context."
+      }
+    ]
+  },
+  "correctness": {
+    "check": "correctness (reference-based, LLM-as-judge)",
+    "num_evaluated": 50,
+    "correct_rate": 0.34,
+    "incorrect_examples": [
+      {
+        "query": "when was hangzhou established",
+        "reference_answer": "Hangzhou was established in the 12th century.",
+        "answer": "outside of Hangzhou.</p><h3>1912–1937</h3><p>In 1912",
+        "judge_reason": "The answer does not state when Hangzhou was established."
+      },
+      {
+        "query": "what is the definition of symmetrical distribution",
+        "reference_answer": "Symmetrical distribution is a distribution that is equal above and below the mean.",
+        "answer": "Definition of symmetrical 1: having, involving, or exhibiting symmetry 2: having corresponding points whose connecting lines are bisected by a given point or perpendicularly bisected by a given line o",
+        "judge_reason": "It defines \"symmetrical\" generally, not a symmetrical distribution as being equal above and below the mean."
+      },
+      {
+        "query": "how long for stitches to be removed",
+        "reference_answer": "From face stitches are removed in  5-7 days and from foot and ankle is removed in  approximately 14 days.",
+        "answer": "How long after surgery will my stitches be removed?",
+        "judge_reason": "It does not provide the stitch removal timing given in the reference answer."
+      },
+      {
+        "query": "what is the purpose of the passive-interface command?",
+        "reference_answer": "The purpose of the passive-interface command is it allows a routing protocol to forward updates out an interface that is missing its IP address allows a router to send routing updates on an interface ",
+        "answer": "What is the purpose of the passive-interface command?",
+        "judge_reason": "The answer only repeats the question and does not explain the command’s purpose."
+      },
+      {
+        "query": "do dolphins have the smell sense",
+        "reference_answer": "Yes,They were thought to lack the ability.",
+        "answer": "Unlike most whales, bowheads have separate nostrils, which suggest they may be able to sense the direction a particular smell is coming from.",
+        "judge_reason": "The answer discusses bowhead whales and smell direction, not whether dolphins have a sense of smell."
+      }
+    ]
+  },
+  "reliability": {
+    "check": "reliability / \"lying factor\" (answerable-vs-answered 2x2)",
+    "num_answerable_evaluated": 50,
+    "num_unanswerable_evaluated": 50,
+    "false_refusal_rate": 0.0,
+    "false_refusal_examples": [],
+    "false_confidence_rate": 0.98,
+    "false_confidence_examples": [
+      {
+        "query": "difference from phycol and psychiatrist",
+        "fabricated_answer": "1 Be aware of the difference between being a psychologist and a psychiatrist.."
+      },
+      {
+        "query": "how to do citations in an essay",
+        "fabricated_answer": "Although a quote from an expert can add impact to your essay, in most cases you should try to either paraphrase or summarize the information, using citation to reference your source."
+      },
+      {
+        "query": "who is the person that created transformers",
+        "fabricated_answer": "the first generation of Transformers"
+      },
+      {
+        "query": "can hyponatremia cause vertigo",
+        "fabricated_answer": "Aside from some medical conditions that are usually well recognized, there are really few conditions specific to sport that cause an altered level of consciousness, nausea, vomiting, lightheadness and"
+      },
+      {
+        "query": "erie insurance corporate address",
+        "fabricated_answer": "The purpose of this site is supply you with their phone number and address as well as share your thoughts about Erie Insurance."
+      }
+    ]
+  },
+  "latency": {
+    "check": "latency",
+    "num_evaluated": 100,
+    "embed": {
+      "avg_ms": 58.0,
+      "p50_ms": 55.03,
+      "p95_ms": 87.0,
+      "p99_ms": 97.8
+    },
+    "search": {
+      "avg_ms": 0.14,
+      "p50_ms": 0.1,
+      "p95_ms": 0.34,
+      "p99_ms": 0.58
+    },
+    "retrieval_total": {
+      "avg_ms": 57.68,
+      "p50_ms": 55.14,
+      "p95_ms": 84.51,
+      "p99_ms": 98.71
+    },
+    "generation": {
+      "avg_ms": 0.41,
+      "p50_ms": 0.4,
+      "p95_ms": 0.58,
+      "p99_ms": 0.68
+    },
+    "retrieval_latency_budget_ms": 50.0,
+    "retrieval_within_budget": false,
+    "generation_latency_target_ms": 1500.0,
+    "generation_within_target": true
+  }
+}

@@ -1,0 +1,179 @@
+{
+  "meta": {
+    "target_root": "/Users/aditya/Projects/Speculative-Rag",
+    "generation_backend": "recovery-chain",
+    "generation_model_hint": "speculative-rag-answer-orchestrator",
+    "language": "hin",
+    "split": "validation",
+    "num_answerable": 50,
+    "num_unanswerable": 50,
+    "num_examples": 100,
+    "num_chunks": 2391,
+    "top_k": 5,
+    "seed": 42,
+    "num_errored": 0
+  },
+  "retrieval": {
+    "check": "retrieval (reference-based)",
+    "num_evaluated": 50,
+    "top_k": 5,
+    "cross_lingual": {
+      "recall_at_k": {
+        "1": 0.56,
+        "3": 0.8,
+        "5": 0.9
+      },
+      "mrr": 0.693
+    },
+    "same_language": {
+      "recall_at_k": {
+        "1": 0.56,
+        "3": 0.8,
+        "5": 0.9
+      },
+      "mrr": 0.693
+    }
+  },
+  "faithfulness": {
+    "check": "faithfulness / hallucination (reference-free, LLM-as-judge)",
+    "num_evaluated": 74,
+    "faithful_rate": 0.9865,
+    "hallucination_rate": 0.0135,
+    "num_confident_answers": 74,
+    "self_report_precision": 0.9865,
+    "self_report_disagreements": [
+      {
+        "query": "average american assets",
+        "answer": "I only have a fraction of the disposable income of the average American 32 yo however.",
+        "judge_reason": "The context mentions this sentence as a quoted comment, but does not support it as a factual claim about the average American 32-year-old's disposable income."
+      }
+    ],
+    "hallucinated_examples": [
+      {
+        "query": "average american assets",
+        "answer": "I only have a fraction of the disposable income of the average American 32 yo however.",
+        "judge_reason": "The context mentions this sentence as a quoted comment, but does not support it as a factual claim about the average American 32-year-old's disposable income."
+      }
+    ]
+  },
+  "correctness": {
+    "check": "correctness (reference-based, LLM-as-judge)",
+    "num_evaluated": 43,
+    "correct_rate": 0.7907,
+    "incorrect_examples": [
+      {
+        "query": "what is the role as a writer in society",
+        "reference_answer": "The writer’s role in society is a vital and necessary check on the values and cultural norms that encrust groups and falsely empower minority interests in setting the world agenda.",
+        "answer": "The ‘writer’s’ role is vital to society in many ways.",
+        "judge_reason": "The answer is too vague and does not capture the key idea that writers act as a necessary check on societal values, norms, and minority interests."
+      },
+      {
+        "query": "how long do fly eggs live",
+        "reference_answer": "An adults fly eggs usually live for 15 to 25 days.",
+        "answer": "Fly eggs typically hatch into maggots in less than a day; in warm conditions, they can hatch after about 8–20 hours.",
+        "judge_reason": "The answer gives hatch time, not how long fly eggs live, so it misses the key fact."
+      },
+      {
+        "query": "do dolphins have the smell sense",
+        "reference_answer": "Yes,They were thought to lack the ability.",
+        "answer": "Whether or not these marine mammals rely on smell to locate food is unknown, however it may make sense for them to rely on smell if they do not have echolocation abilities or their ability to ecolocat",
+        "judge_reason": "The answer does not clearly say that dolphins do have a sense of smell, which is the key point in the reference."
+      },
+      {
+        "query": "gas dryers running cost",
+        "reference_answer": "Gas dryers cost anywhere from about $350 to $1,600.",
+        "answer": "most dryers consume about 5000 watts (5 kilowatts) of energy.",
+        "judge_reason": "The answer gives an unrelated power usage figure and does not state the cost of gas dryers."
+      },
+      {
+        "query": "what types of actions are controlled by smooth muscles",
+        "reference_answer": "Hormones, neurotransmitters and other chemicals such as calcium and potassium are types of actions that are controlled by smooth muscles.",
+        "answer": "Smooth muscles control involuntary actions, such as movements in blood vessels and hollow organs like the bladder. Their activity is regulated by the autonomic nervous system and can also be influence",
+        "judge_reason": "The answer does not match the reference’s specific claim that hormones, neurotransmitters, calcium, and potassium are the controlled actions/factors."
+      }
+    ]
+  },
+  "reliability": {
+    "check": "reliability / \"lying factor\" (answerable-vs-answered 2x2)",
+    "num_answerable_evaluated": 50,
+    "num_unanswerable_evaluated": 50,
+    "false_refusal_rate": 0.14,
+    "false_refusal_examples": [
+      {
+        "query": "what is the size and weight of a whitetail deer",
+        "expected_answer": "The size of a deer depends greatly on it's species, age, and sex. A typical adult female whitetail deer is usually around 100 lbs. and a male of the same species around 200 lbs."
+      },
+      {
+        "query": "why did laozi say that idea",
+        "expected_answer": "Laozi thought that both Communism and Legalism were a little off with there ideas to re-create a better society, so he created the idea of Daoism."
+      },
+      {
+        "query": "when was star trek the voyage released",
+        "expected_answer": "The Star Trek Voyage was released on November 26, 1986."
+      },
+      {
+        "query": "how old would dean martin be",
+        "expected_answer": "Dean Martin was 78 years old."
+      },
+      {
+        "query": "can thinning vocal cords cause hoarseness",
+        "expected_answer": "Yes, thinning vocal cords cause hoarseness."
+      }
+    ],
+    "false_confidence_rate": 0.62,
+    "false_confidence_examples": [
+      {
+        "query": "difference from phycol and psychiatrist",
+        "fabricated_answer": "A therapist, on the other hand, can often get by with a masters degree in their chosen specialty.ost fields require a master’s degree, although doctorates are often necessary for clinical psychologist"
+      },
+      {
+        "query": "what is tlr development",
+        "fabricated_answer": "TLR and Brain Development During TLR, the connections to the temporal lobe are starting to be developed, setting up the brain to be able to sequence."
+      },
+      {
+        "query": "tail wagging the dog originate",
+        "fabricated_answer": "“The tail wagging the dog” dates to around the turn of the 20th century and is documented in 1907 in Von Arnum’s *Fraulein Schmidt*."
+      },
+      {
+        "query": "calculate distance deceleration",
+        "fabricated_answer": "Using v² = u² + 2ad with final velocity v = 0, initial velocity u = 12 m/s, and deceleration magnitude a = 3.2 m/s², the stopping distance is d = 12²/(2 × 3.2) = 22.5 m."
+      },
+      {
+        "query": "how to cook fried chicken legs",
+        "fabricated_answer": "Heat oil in a deep fryer or large skillet to 350°F (175°C). Coat the drumsticks in a mixture of flour, cornmeal, and salt, then fry them uncovered for 25–30 minutes, turning occasionally, until browne"
+      }
+    ]
+  },
+  "latency": {
+    "check": "latency",
+    "num_evaluated": 100,
+    "embed": {
+      "avg_ms": 23.65,
+      "p50_ms": 15.45,
+      "p95_ms": 69.08,
+      "p99_ms": 95.69
+    },
+    "search": {
+      "avg_ms": 0.11,
+      "p50_ms": 0.09,
+      "p95_ms": 0.22,
+      "p99_ms": 0.42
+    },
+    "retrieval_total": {
+      "avg_ms": 33.9,
+      "p50_ms": 28.93,
+      "p95_ms": 74.78,
+      "p99_ms": 134.93
+    },
+    "generation": {
+      "avg_ms": 12372.77,
+      "p50_ms": 13125.27,
+      "p95_ms": 21414.28,
+      "p99_ms": 26165.63
+    },
+    "retrieval_latency_budget_ms": 50.0,
+    "retrieval_within_budget": false,
+    "generation_latency_target_ms": 1500.0,
+    "generation_within_target": false
+  }
+}

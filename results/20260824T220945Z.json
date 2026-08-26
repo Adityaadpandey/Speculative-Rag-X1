@@ -1,0 +1,104 @@
+{
+  "meta": {
+    "target_root": "/Users/aditya/Projects/Speculative-Rag",
+    "generation_backend": "local",
+    "generation_model_hint": "extractive",
+    "language": "hin",
+    "split": "validation",
+    "num_answerable": 3,
+    "num_unanswerable": 3,
+    "num_examples": 6,
+    "num_chunks": 133,
+    "top_k": 5,
+    "seed": 42,
+    "num_errored": 0
+  },
+  "retrieval": {
+    "check": "retrieval (reference-based)",
+    "num_evaluated": 3,
+    "top_k": 5,
+    "cross_lingual": {
+      "recall_at_k": {
+        "1": 0.3333,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "mrr": 0.6667
+    },
+    "same_language": {
+      "recall_at_k": {
+        "1": 0.3333,
+        "3": 1.0,
+        "5": 1.0
+      },
+      "mrr": 0.6667
+    }
+  },
+  "faithfulness": {
+    "check": "faithfulness / hallucination (reference-free, LLM-as-judge)",
+    "num_evaluated": 3,
+    "faithful_rate": 1.0,
+    "hallucination_rate": 0.0,
+    "num_confident_answers": 3,
+    "self_report_precision": 1.0,
+    "self_report_disagreements": [],
+    "hallucinated_examples": []
+  },
+  "correctness": {
+    "check": "correctness (reference-based, LLM-as-judge)",
+    "num_evaluated": 2,
+    "correct_rate": 1.0,
+    "incorrect_examples": []
+  },
+  "reliability": {
+    "check": "reliability / \"lying factor\" (answerable-vs-answered 2x2)",
+    "num_answerable_evaluated": 3,
+    "num_unanswerable_evaluated": 3,
+    "false_refusal_rate": 0.3333,
+    "false_refusal_examples": [
+      {
+        "query": "how to find the surface area of a triangle",
+        "expected_answer": "To find the area of a triangle, multiply the base by the height, and then divide by 2. The division by 2 comes from the fact that a parallelogram can be divided into 2 triangles."
+      }
+    ],
+    "false_confidence_rate": 0.3333,
+    "false_confidence_examples": [
+      {
+        "query": "hexadecimal numbers to binary numbers",
+        "fabricated_answer": "To convert binary numbers into hexadecimal numbers we must first divide the binary number up into a 4-bit binary word which can have any value from 010 ( 00002 ) to 1510 ( 11112 ) representing the hex"
+      }
+    ]
+  },
+  "latency": {
+    "check": "latency",
+    "num_evaluated": 6,
+    "embed": {
+      "avg_ms": 13.36,
+      "p50_ms": 13.81,
+      "p95_ms": 22.29,
+      "p99_ms": 23.79
+    },
+    "search": {
+      "avg_ms": 0.05,
+      "p50_ms": 0.04,
+      "p95_ms": 0.06,
+      "p99_ms": 0.07
+    },
+    "retrieval_total": {
+      "avg_ms": 13.72,
+      "p50_ms": 11.29,
+      "p95_ms": 23.36,
+      "p99_ms": 24.04
+    },
+    "generation": {
+      "avg_ms": 0.53,
+      "p50_ms": 0.57,
+      "p95_ms": 0.59,
+      "p99_ms": 0.59
+    },
+    "retrieval_latency_budget_ms": 50.0,
+    "retrieval_within_budget": true,
+    "generation_latency_target_ms": 1500.0,
+    "generation_within_target": true
+  }
+}

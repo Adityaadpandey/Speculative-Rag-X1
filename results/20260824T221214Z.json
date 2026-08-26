@@ -1,0 +1,219 @@
+{
+  "meta": {
+    "target_root": "/Users/aditya/Projects/Speculative-Rag",
+    "generation_backend": "local",
+    "generation_model_hint": "extractive",
+    "language": "hin",
+    "split": "validation",
+    "num_answerable": 50,
+    "num_unanswerable": 50,
+    "num_examples": 100,
+    "num_chunks": 2391,
+    "top_k": 5,
+    "seed": 42,
+    "num_errored": 0
+  },
+  "retrieval": {
+    "check": "retrieval (reference-based)",
+    "num_evaluated": 50,
+    "top_k": 5,
+    "cross_lingual": {
+      "recall_at_k": {
+        "1": 0.56,
+        "3": 0.8,
+        "5": 0.9
+      },
+      "mrr": 0.693
+    },
+    "same_language": {
+      "recall_at_k": {
+        "1": 0.56,
+        "3": 0.8,
+        "5": 0.9
+      },
+      "mrr": 0.693
+    }
+  },
+  "faithfulness": {
+    "check": "faithfulness / hallucination (reference-free, LLM-as-judge)",
+    "num_evaluated": 22,
+    "faithful_rate": 0.1364,
+    "hallucination_rate": 0.8636,
+    "num_confident_answers": 22,
+    "self_report_precision": 0.1364,
+    "self_report_disagreements": [
+      {
+        "query": "what is peekaboo",
+        "answer": "The indoor-outdoor spaces—breezy courtyard, open bar lounge, subterranean dining room with a lush living wall and peekaboo view to the street—are stunning.",
+        "judge_reason": "The answer introduces specific scene details about spaces and views that are not supported by the context."
+      },
+      {
+        "query": "how to cook fried chicken legs",
+        "answer": "I haven't fried chicken in years, but the way my mom taught me how to do it was 375 for 7 minutes a side, then turn the heat down to 275 and cook it for 15 minutes a side.",
+        "judge_reason": "The answer gives frying temperatures and times not stated in the context, so it is unsupported."
+      },
+      {
+        "query": "how long do fly eggs live",
+        "answer": "The wild turkey has the potential to live as long as thirteen years or so, They can (and do) run fast with their long legs, and will take wing and fly.",
+        "judge_reason": "The answer mentions wild turkeys, their lifespan, running, and flying, none of which are supported by the context about flies and fruit flies."
+      },
+      {
+        "query": "what is the primary function",
+        "answer": "The primary function of RNA polymerase II is _____.",
+        "judge_reason": "The context does not mention RNA polymerase II or its function."
+      },
+      {
+        "query": "what is providing customer service",
+        "answer": "At Coggin Honda of Orlando, we take pride in our superior customer service and nothing is more important to us than providing our customers with the best service in Orlando.",
+        "judge_reason": "The context defines customer service generally and gives advice, but it does not mention Coggin Honda of Orlando or any claim about being the best service in Orlando."
+      }
+    ],
+    "hallucinated_examples": [
+      {
+        "query": "what is peekaboo",
+        "answer": "The indoor-outdoor spaces—breezy courtyard, open bar lounge, subterranean dining room with a lush living wall and peekaboo view to the street—are stunning.",
+        "judge_reason": "The answer introduces specific scene details about spaces and views that are not supported by the context."
+      },
+      {
+        "query": "how to cook fried chicken legs",
+        "answer": "I haven't fried chicken in years, but the way my mom taught me how to do it was 375 for 7 minutes a side, then turn the heat down to 275 and cook it for 15 minutes a side.",
+        "judge_reason": "The answer gives frying temperatures and times not stated in the context, so it is unsupported."
+      },
+      {
+        "query": "how long do fly eggs live",
+        "answer": "The wild turkey has the potential to live as long as thirteen years or so, They can (and do) run fast with their long legs, and will take wing and fly.",
+        "judge_reason": "The answer mentions wild turkeys, their lifespan, running, and flying, none of which are supported by the context about flies and fruit flies."
+      },
+      {
+        "query": "what is the primary function",
+        "answer": "The primary function of RNA polymerase II is _____.",
+        "judge_reason": "The context does not mention RNA polymerase II or its function."
+      },
+      {
+        "query": "what is providing customer service",
+        "answer": "At Coggin Honda of Orlando, we take pride in our superior customer service and nothing is more important to us than providing our customers with the best service in Orlando.",
+        "judge_reason": "The context defines customer service generally and gives advice, but it does not mention Coggin Honda of Orlando or any claim about being the best service in Orlando."
+      }
+    ]
+  },
+  "correctness": {
+    "check": "correctness (reference-based, LLM-as-judge)",
+    "num_evaluated": 12,
+    "correct_rate": 0.1667,
+    "incorrect_examples": [
+      {
+        "query": "how long do fly eggs live",
+        "reference_answer": "An adults fly eggs usually live for 15 to 25 days.",
+        "answer": "The wild turkey has the potential to live as long as thirteen years or so, They can (and do) run fast with their long legs, and will take wing and fly.",
+        "judge_reason": "The answer discusses wild turkeys, not fly eggs or their lifespan."
+      },
+      {
+        "query": "what is providing customer service",
+        "reference_answer": "Customer service is the act of taking care of the customer's needs by providing and delivering professional, helpful, high quality service and assistance before, during, and after the customer's requi",
+        "answer": "At Coggin Honda of Orlando, we take pride in our superior customer service and nothing is more important to us than providing our customers with the best service in Orlando.",
+        "judge_reason": "The answer is a promotional statement and does not define what customer service is as in the reference."
+      },
+      {
+        "query": "what is peekaboo",
+        "reference_answer": "Peekaboo is a game played by or with very young children, typically in which one covers the face or hides and then suddenly uncovers the face or reappears, calling “Peekaboo!”.",
+        "answer": "The indoor-outdoor spaces—breezy courtyard, open bar lounge, subterranean dining room with a lush living wall and peekaboo view to the street—are stunning.",
+        "judge_reason": "The answer uses 'peekaboo' in a different context and does not define the children’s game."
+      },
+      {
+        "query": "when was star trek the voyage released",
+        "reference_answer": "The Star Trek Voyage was released on November 26, 1986.",
+        "answer": "The new show - called Star Trek: Discovery - was supposed to set off on its maiden voyage in January 2017, with Hannibal's Bryan Fuller as showrunner and Alex Kurtzman (producer on the movie reboots) ",
+        "judge_reason": "It პასუხes about Star Trek: Discovery, not the release date of Star Trek: The Voyage."
+      },
+      {
+        "query": "cost of an average wedding cake",
+        "reference_answer": "The national average cost of wedding cakes will be $451 in 2013, jumping to $466 in 2014.",
+        "answer": "1 The average cost of a wedding cake is $543, according to The Bridal Association of America.",
+        "judge_reason": "The answer gives a different average wedding cake cost than the reference and does not match the cited figures."
+      }
+    ]
+  },
+  "reliability": {
+    "check": "reliability / \"lying factor\" (answerable-vs-answered 2x2)",
+    "num_answerable_evaluated": 50,
+    "num_unanswerable_evaluated": 50,
+    "false_refusal_rate": 0.76,
+    "false_refusal_examples": [
+      {
+        "query": "when was power rangers released in europe",
+        "expected_answer": "Power rangers was released on 2nd November in Europe."
+      },
+      {
+        "query": "what is the purpose of the passive-interface command?",
+        "expected_answer": "The purpose of the passive-interface command is it allows a routing protocol to forward updates out an interface that is missing its IP address allows a router to send routing updates on an interface "
+      },
+      {
+        "query": "what is megatron called",
+        "expected_answer": "Megatron is the founder of the Decepticon uprising, and their most well-known and feared leader."
+      },
+      {
+        "query": "what is the definition of symmetrical distribution",
+        "expected_answer": "Symmetrical distribution is a distribution that is equal above and below the mean."
+      },
+      {
+        "query": "how long for stitches to be removed",
+        "expected_answer": "From face stitches are removed in  5-7 days and from foot and ankle is removed in  approximately 14 days."
+      }
+    ],
+    "false_confidence_rate": 0.2,
+    "false_confidence_examples": [
+      {
+        "query": "how to do citations in an essay",
+        "fabricated_answer": "Here are a few of the most common in-text citations that you might need to write in your essay: One author: Example 1: Louis Armstrong easily reached difficult notes, the F’s and G’s that hindered so "
+      },
+      {
+        "query": "how to cook fried chicken legs",
+        "fabricated_answer": "I haven't fried chicken in years, but the way my mom taught me how to do it was 375 for 7 minutes a side, then turn the heat down to 275 and cook it for 15 minutes a side."
+      },
+      {
+        "query": "what is the primary function",
+        "fabricated_answer": "The primary function of RNA polymerase II is _____."
+      },
+      {
+        "query": "what is zip code of fairmont mis",
+        "fabricated_answer": "2413 Bunner Ridge Rd is in Fairmont, WV and in ZIP Code 26554."
+      },
+      {
+        "query": "how build up blood platelets",
+        "fabricated_answer": "Fibrin molecules then combine to form long fibrin threads that entangle platelets, building up a spongy mass that gradually hardens and contracts to form the blood clot...."
+      }
+    ]
+  },
+  "latency": {
+    "check": "latency",
+    "num_evaluated": 100,
+    "embed": {
+      "avg_ms": 12.18,
+      "p50_ms": 11.05,
+      "p95_ms": 19.44,
+      "p99_ms": 23.56
+    },
+    "search": {
+      "avg_ms": 0.09,
+      "p50_ms": 0.09,
+      "p95_ms": 0.11,
+      "p99_ms": 0.11
+    },
+    "retrieval_total": {
+      "avg_ms": 12.42,
+      "p50_ms": 11.18,
+      "p95_ms": 20.65,
+      "p99_ms": 24.41
+    },
+    "generation": {
+      "avg_ms": 241.83,
+      "p50_ms": 211.29,
+      "p95_ms": 287.41,
+      "p99_ms": 602.7
+    },
+    "retrieval_latency_budget_ms": 50.0,
+    "retrieval_within_budget": true,
+    "generation_latency_target_ms": 1500.0,
+    "generation_within_target": true
+  }
+}
