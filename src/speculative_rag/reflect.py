@@ -119,10 +119,13 @@ Candidate passages:
 
 For every candidate that is actually relevant to answering the question, report its 0-based index and \
 a relevance score from 0.0 to 1.0. Do not include candidates that are merely on-topic but do not bear on \
-the answer.
+the answer. A passage about the same general subject that never states the specific fact, entity, \
+distinction, number, or comparison the question asks for is NOT relevant -- score that the same as an \
+unrelated passage, not as a partial match.
 
 If NONE of the candidates contain information that answers the question, return an empty selection and \
-set answerable to false -- do not force a selection just because candidates exist.
+set answerable to false -- do not force a selection just because candidates exist. When genuinely unsure \
+whether a candidate answers the question or merely resembles it, decline rather than guess.
 
 Give a brief one-sentence reasoning."""
 
@@ -204,8 +207,11 @@ Answer the question directly using only the evidence above.
 Do not add unsupported facts, and do not invent anything not present in the evidence.
 Do not answer a different but related question -- answer exactly what was asked.
 For "how", "why", and definition questions, do not merely repeat the premise. Include the explanation
-and key supporting details stated in the evidence (for example, named boundaries or causes). If the
-evidence does not answer the question, say so explicitly and set answerable to false.
+and key supporting details stated in the evidence (for example, named boundaries or causes).
+Evidence about the same general subject that never states the specific fact, entity, distinction,
+number, or comparison asked for does not answer the question -- treat that the same as having no
+evidence at all. If the evidence does not answer the question, say so explicitly and set answerable
+to false rather than offering the closest related thing you can find.
 Keep the answer concise but complete (one or two sentences)."""
 
 
@@ -288,8 +294,12 @@ Candidate passages:
 
 Step 1 -- selection: for every candidate that is actually relevant to answering the question, report its 0-based \
 index and a relevance score from 0.0 to 1.0. Do not include candidates that are merely on-topic but do not bear \
-on the answer. If NONE of the candidates contain information that answers the question, return an empty \
-selection and set selection_found to false -- do not force a selection just because candidates exist.
+on the answer. A passage about the same general subject that never states the specific fact, entity, \
+distinction, number, or comparison the question asks for is NOT relevant -- score it the same as an unrelated \
+passage, not as a partial match. If NONE of the candidates contain information that answers the question, \
+return an empty selection and set selection_found to false -- do not force a selection just because candidates \
+exist. When genuinely unsure whether a candidate answers the question or merely resembles it, decline rather \
+than guess.
 
 Step 2 -- answer: if step 1 found relevant evidence, answer the question directly using only that evidence. Do \
 not add unsupported facts, do not invent anything not present in the evidence, and do not answer a different but \
@@ -378,7 +388,10 @@ Question:
 Candidate passages:
 {candidates_block}
 
-First decide: do these passages, taken together, contain enough information to answer the question?
+First decide: do these passages, taken together, contain enough information to answer the question? \
+Passages about the same general subject that never state the specific fact, entity, distinction, \
+number, or comparison asked for do NOT count -- that's the same as having no relevant evidence at all, \
+even if the passages are on-topic.
 
 If yes: write a concise answer (one or two sentences) that states the specific fact the question asks \
 for. Synthesize from the relevant parts of the passages — do not copy an entire passage verbatim, and \
@@ -386,8 +399,9 @@ do not include information irrelevant to the question. For "how", "why", and def
 include the explanation and key supporting details rather than only restating the premise. List the \
 0-based indices of the passages you actually used.
 
-If no: do not guess or invent an answer from general knowledge. Set answerable=false, leave \
-answer_text empty, and briefly explain what information is missing."""
+If no, or if you are genuinely unsure whether the passages actually answer the question rather than \
+merely resembling it: do not guess or invent an answer from general knowledge. Set answerable=false, \
+leave answer_text empty, and briefly explain what information is missing."""
 
 
 class SynthesisVerdict(BaseModel):

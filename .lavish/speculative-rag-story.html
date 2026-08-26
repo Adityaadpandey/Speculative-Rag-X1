@@ -1,0 +1,82 @@
+<!doctype html>
+<html data-theme="luxury" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Speculative RAG — the fast answer that earns trust</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "dark", securityLevel: "strict" });
+  </script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box} :where(* ){min-width:0} body{background:radial-gradient(circle at 80% 0%,#29324c 0,#111827 38%,#0b0d12 100%);min-height:100vh} .mermaid{background:#151923;border-radius:1rem;padding:1rem;overflow:auto} .eyebrow{letter-spacing:.18em;text-transform:uppercase;font-size:.72rem;font-weight:800;color:#f5b544} .glow{box-shadow:0 0 70px #f5b54418} .shot{border-left:3px solid #f5b544}
+  </style>
+</head>
+<body class="text-base-content">
+<main class="mx-auto max-w-6xl p-5 md:p-10">
+  <nav class="flex items-center justify-between mb-12"><div class="font-black tracking-tight text-xl">SPECULATIVE <span class="text-warning">RAG</span></div><span class="badge badge-outline">video explainer board</span></nav>
+  <header class="grid lg:grid-cols-[1.15fr_.85fr] gap-8 items-end mb-14">
+    <div><div class="eyebrow mb-4">The story in one sentence</div><h1 class="text-5xl md:text-7xl font-black leading-[.95]">Answer now.<br><span class="text-warning">Verify after.</span></h1><p class="text-lg opacity-75 mt-6 max-w-xl">A voice-first RAG system with one honest promise: show useful evidence fast, then let a slower verifier improve—or overturn—it.</p></div>
+    <div class="card bg-base-100/10 border border-white/10 glow"><div class="card-body"><div class="eyebrow">The design move</div><p class="text-2xl font-bold">Two clocks.<br>One answer.</p><div class="divider my-1"></div><p class="opacity-70">The fast clock gets evidence onto the screen. The slow clock decides whether that evidence deserves trust.</p></div></div>
+  </header>
+
+  <section class="mb-14"><div class="flex justify-between items-end mb-4"><div><div class="eyebrow">The hero visual</div><h2 class="text-3xl font-bold">What happens after you speak?</h2></div><span class="badge badge-warning badge-soft">Click to edit as Excalidraw</span></div>
+    <div class="mermaid">flowchart TD
+      Q["🎙 Voice or text query"] --> STT["Sarvam STT\nvoice only · measured separately"]
+      STT --> H
+      Q --> H
+
+      subgraph H["01 · HOT PATH — under 200ms · no hosted LLM"]
+        direction LR
+        G["Unsafe input\nheuristic"] --> B["BM25 sparse\nterm matching"] --> R["Qdrant\ntop candidates"] --> O["Off-topic\nscore threshold"] --> X["Extractive span\nbest evidence"]
+      end
+      G -->|blocked| U["UNSAFE_INPUT_REFUSED"]
+      O -->|weak match| N["OFF_TOPIC /\nINSUFFICIENT_EVIDENCE"]
+      X --> C["⚡ CANDIDATE ANSWER\nshown immediately"]
+
+      subgraph A["02 · ASYNC RECOVERY — after the answer is visible"]
+        direction LR
+        C -.-> V["Groundedness check\nClaude Haiku"]
+        V -->|valid| K["Keep candidate\nANSWERED"]
+        V -->|invalid| RR["Rerank full pool\n+ regenerate"]
+        RR --> V2["Re-validate"]
+        V2 -->|valid| K2["ANSWERED\nrepaired"]
+        V2 -->|invalid| SY["Multi-passage\nsynthesis"]
+        SY --> V3["Final validation"]
+        V3 -->|valid| K3["ANSWERED\nsynthesized"]
+        V3 -->|invalid| F["UNGROUNDED /\nNOT_ANSWERED / FALLBACK"]
+      end
+      classDef input fill:#1d3142,stroke:#7dd3fc,color:#fff
+      classDef hot fill:#26354a,stroke:#f5b544,color:#fff
+      classDef async fill:#392843,stroke:#d8a4ff,color:#fff
+      classDef exit fill:#3d2929,stroke:#fb7185,color:#fff
+      class Q,STT input
+      class G,B,R,O,X,C hot
+      class V,K,RR,V2,K2,SY,V3,K3 async
+      class U,N,F exit</div>
+    <p class="text-sm opacity-60 mt-3">Draw the solid line first. Pause when the answer appears. Then add the dotted line: confidence arrives after usefulness, not before it.</p>
+  </section>
+
+  <section class="mb-14"><div class="eyebrow mb-2">The mental model</div><h2 class="text-3xl font-bold mb-5">Three layers, not one magic model</h2><div class="grid md:grid-cols-3 gap-4"><div class="card bg-base-100/10 border border-warning/30"><div class="card-body"><span class="text-warning text-3xl">01</span><h3 class="card-title">Hear</h3><p class="opacity-70">Sarvam turns Indic speech into a query. STT is measured separately from the RAG SLA.</p></div></div><div class="card bg-base-100/10 border border-warning/30"><div class="card-body"><span class="text-warning text-3xl">02</span><h3 class="card-title">Find</h3><p class="opacity-70">BM25 and Qdrant retrieve lexical evidence, then an extractive selector chooses a defensible span.</p></div></div><div class="card bg-base-100/10 border border-warning/30"><div class="card-body"><span class="text-warning text-3xl">03</span><h3 class="card-title">Earn trust</h3><p class="opacity-70">Async validation can keep, repair, synthesize, or refuse the first answer.</p></div></div></div></section>
+
+  <section class="grid md:grid-cols-3 gap-4 mb-14">
+    <div class="stat bg-base-100/10 rounded-box"><div class="stat-title">Hot-path SLA</div><div class="stat-value text-warning">&lt;200ms</div><div class="stat-desc">RAG pipeline only</div></div>
+    <div class="stat bg-base-100/10 rounded-box"><div class="stat-title">Retrieval</div><div class="stat-value text-2xl">BM25 + Qdrant</div><div class="stat-desc">Sparse, lexical, deployable</div></div>
+    <div class="stat bg-base-100/10 rounded-box"><div class="stat-title">Languages</div><div class="stat-value text-2xl">HI · EN · TA · UR</div><div class="stat-desc">Indic-first voice experience</div></div>
+  </section>
+
+  <section class="mb-14"><div class="eyebrow mb-2">A 75-second video plan</div><h2 class="text-3xl font-bold mb-6">A story with a visible turning point</h2><div class="grid gap-3">
+    <article class="shot card bg-base-100/10"><div class="card-body py-4 md:flex-row md:items-center gap-5"><span class="badge badge-warning">0–10s</span><div><h3 class="font-bold">Hook — “Can a RAG answer be instant and trustworthy?”</h3><p class="opacity-70">Animate a voice waveform into a query card. Land on the 200ms target.</p></div></div></article>
+    <article class="shot card bg-base-100/10"><div class="card-body py-4 md:flex-row md:items-center gap-5"><span class="badge badge-warning">10–30s</span><div><h3 class="font-bold">Draw the hot path</h3><p class="opacity-70">On the Excalidraw board: guardrail → BM25 → Qdrant → off-topic → extractive answer. Emphasize “no LLM calls.”</p></div></div></article>
+    <article class="shot card bg-base-100/10"><div class="card-body py-4 md:flex-row md:items-center gap-5"><span class="badge badge-warning">30–50s</span><div><h3 class="font-bold">Make the answer appear</h3><p class="opacity-70">Show the answer immediately, then draw a dotted arrow labelled “async.” Explain that verification can arrive later.</p></div></div></article>
+    <article class="shot card bg-base-100/10"><div class="card-body py-4 md:flex-row md:items-center gap-5"><span class="badge badge-warning">50–68s</span><div><h3 class="font-bold">Reveal recovery</h3><p class="opacity-70">Animate verifying → rerank & regenerate → synthesis. The answer may improve, change, or become a refusal.</p></div></div></article>
+    <article class="shot card bg-base-100/10"><div class="card-body py-4 md:flex-row md:items-center gap-5"><span class="badge badge-warning">68–75s</span><div><h3 class="font-bold">Close with the honest claim</h3><p class="opacity-70">“We do not hide LLM latency inside the SLA. We ship a fast guess, then earn confidence.”</p></div></div></article>
+  </div></section>
+
+  <section class="grid lg:grid-cols-2 gap-6 mb-12"><div class="card bg-base-100/10"><div class="card-body"><div class="eyebrow">What to say</div><h2 class="card-title text-2xl">Narrator script</h2><blockquote class="border-l-2 border-warning pl-4 italic opacity-85">“Speculative RAG starts with a useful guess. Speech becomes text, BM25 finds evidence, and an extractive selector returns a passage before a hosted model could respond. Then, in the background, Claude checks whether that answer is grounded. If not, the system reranks, regenerates, synthesizes—or admits it cannot answer.”</blockquote></div></div><div class="card bg-warning text-warning-content"><div class="card-body"><div class="eyebrow text-warning-content/70">Important clarification</div><h2 class="card-title text-2xl">The name is inspired by speculation—not the paper’s exact algorithm.</h2><p>This project does not use specialist/generalist parallel drafting. Its “speculative” behavior is closer to speculative decoding: commit cheaply, validate asynchronously.</p></div></div></section>
+  <footer class="opacity-60 text-sm flex justify-between gap-4 flex-wrap"><span>Evidence: README.md · spec.md · webapp/frontend</span><span>Designed for review in Lavish · Excalidraw flow is editable</span></footer>
+</main>
+</body></html>

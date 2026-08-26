@@ -101,6 +101,8 @@ def main() -> None:
     all_results = baseline_results + candidate_results
     SETTINGS.results_dir.mkdir(parents=True, exist_ok=True)
     output_path = SETTINGS.results_dir / "embedding_model_comparison.md"
+
+    /
     output_path.write_text(render_markdown_table(all_results))
     print(render_markdown_table(all_results))
     print(f"Saved to {output_path}")
