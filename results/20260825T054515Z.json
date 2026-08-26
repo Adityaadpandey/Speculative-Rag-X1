@@ -1,0 +1,209 @@
+{
+  "meta": {
+    "target_root": "/Users/aditya/Projects/Speculative-Rag",
+    "generation_backend": "local",
+    "generation_model_hint": "extractive",
+    "language": "hin",
+    "split": "validation",
+    "num_answerable": 50,
+    "num_unanswerable": 50,
+    "num_examples": 100,
+    "num_chunks": 2391,
+    "top_k": 5,
+    "seed": 42,
+    "num_errored": 0
+  },
+  "retrieval": {
+    "check": "retrieval (reference-based)",
+    "num_evaluated": 50,
+    "top_k": 5,
+    "cross_lingual": {
+      "recall_at_k": {
+        "1": 0.56,
+        "3": 0.8,
+        "5": 0.9
+      },
+      "mrr": 0.693
+    },
+    "same_language": {
+      "recall_at_k": {
+        "1": 0.56,
+        "3": 0.8,
+        "5": 0.9
+      },
+      "mrr": 0.693
+    }
+  },
+  "faithfulness": {
+    "check": "faithfulness / hallucination (reference-free, LLM-as-judge)",
+    "num_evaluated": 52,
+    "faithful_rate": 0.9231,
+    "hallucination_rate": 0.0769,
+    "num_confident_answers": 52,
+    "self_report_precision": 0.9231,
+    "self_report_disagreements": [
+      {
+        "query": "when was hangzhou established",
+        "answer": "outside of Hangzhou.</p><h3>1912–1937</h3><p>In 1912",
+        "judge_reason": "The answer is an incomplete fragment that quotes context without answering the question, so it is not a supported factual claim."
+      },
+      {
+        "query": "why did laozi say that idea",
+        "answer": "Laozi thought that both Communism and Legalism were a little off with there ideas to re-create a better society, so he came up with the brilliant idea to combine them.",
+        "judge_reason": "The context supports Laozi as the creator of Daoism, but it does not mention Communism or that he combined it with Legalism."
+      },
+      {
+        "query": "cost of an average wedding cake",
+        "answer": "(The national average cost of wedding cakes and desserts will be $451 in 2013, jumping to $466 in 2014, up from 2012’s $437.",
+        "judge_reason": "The answer quotes only a partial sentence, but the context does not state that this is the specific answer to the question about a 300-serving cake."
+      },
+      {
+        "query": "what was william l hawkins: an imaginative geography about",
+        "answer": "HAWKINS An Imaginative Geography The Figge Art Museum is pleased to announce the organization of William L.",
+        "judge_reason": "The answer is an incomplete fragment and does not state a supported factual claim from the context."
+      }
+    ],
+    "hallucinated_examples": [
+      {
+        "query": "when was hangzhou established",
+        "answer": "outside of Hangzhou.</p><h3>1912–1937</h3><p>In 1912",
+        "judge_reason": "The answer is an incomplete fragment that quotes context without answering the question, so it is not a supported factual claim."
+      },
+      {
+        "query": "why did laozi say that idea",
+        "answer": "Laozi thought that both Communism and Legalism were a little off with there ideas to re-create a better society, so he came up with the brilliant idea to combine them.",
+        "judge_reason": "The context supports Laozi as the creator of Daoism, but it does not mention Communism or that he combined it with Legalism."
+      },
+      {
+        "query": "cost of an average wedding cake",
+        "answer": "(The national average cost of wedding cakes and desserts will be $451 in 2013, jumping to $466 in 2014, up from 2012’s $437.",
+        "judge_reason": "The answer quotes only a partial sentence, but the context does not state that this is the specific answer to the question about a 300-serving cake."
+      },
+      {
+        "query": "what was william l hawkins: an imaginative geography about",
+        "answer": "HAWKINS An Imaginative Geography The Figge Art Museum is pleased to announce the organization of William L.",
+        "judge_reason": "The answer is an incomplete fragment and does not state a supported factual claim from the context."
+      }
+    ]
+  },
+  "correctness": {
+    "check": "correctness (reference-based, LLM-as-judge)",
+    "num_evaluated": 35,
+    "correct_rate": 0.5714,
+    "incorrect_examples": [
+      {
+        "query": "what is the definition of symmetrical distribution",
+        "reference_answer": "Symmetrical distribution is a distribution that is equal above and below the mean.",
+        "answer": "Definition of symmetrical 1: having, involving, or exhibiting symmetry 2: having corresponding points whose connecting lines are bisected by a given point or perpendicularly bisected by a given line o",
+        "judge_reason": "The answer gives a general definition of symmetrical, not the statistical definition of a distribution equal above and below the mean."
+      },
+      {
+        "query": "when was hangzhou established",
+        "reference_answer": "Hangzhou was established in the 12th century.",
+        "answer": "outside of Hangzhou.</p><h3>1912–1937</h3><p>In 1912",
+        "judge_reason": "The answer is incomplete and does not state when Hangzhou was established."
+      },
+      {
+        "query": "what is the purpose of the passive-interface command?",
+        "reference_answer": "The purpose of the passive-interface command is it allows a routing protocol to forward updates out an interface that is missing its IP address allows a router to send routing updates on an interface ",
+        "answer": "This is a sample output of debug eigrp packet hello with the passive-interface command not configured for Serial0:",
+        "judge_reason": "It does not state the purpose of passive-interface and instead gives irrelevant debug text."
+      },
+      {
+        "query": "foods to firm up stool",
+        "reference_answer": "Multi grain or whole grain wheat, corn and rice cereals, bran, fibrous vegetables (carrots, celery), skins of fruit and vegetables, oats, barley, rye, legumes (lentils, kidney beans), peeled fruits an",
+        "answer": "Feed Foods That Firm Up Stool.",
+        "judge_reason": "The answer is too vague and does not name any of the stool-firming foods from the reference."
+      },
+      {
+        "query": "how fast is a kilometer in miles",
+        "reference_answer": "One kilometer is equal to 0.6214 miles.",
+        "answer": "Miles to Kilometers and Walking Time Calculator Charts Fast pace: 11 minutes per mile or 7 minutes per kilometer.",
+        "judge_reason": "The answer does not state the conversion for one kilometer in miles."
+      }
+    ]
+  },
+  "reliability": {
+    "check": "reliability / \"lying factor\" (answerable-vs-answered 2x2)",
+    "num_answerable_evaluated": 50,
+    "num_unanswerable_evaluated": 50,
+    "false_refusal_rate": 0.3,
+    "false_refusal_examples": [
+      {
+        "query": "what is megatron called",
+        "expected_answer": "Megatron is the founder of the Decepticon uprising, and their most well-known and feared leader."
+      },
+      {
+        "query": "how long for stitches to be removed",
+        "expected_answer": "From face stitches are removed in  5-7 days and from foot and ankle is removed in  approximately 14 days."
+      },
+      {
+        "query": "how long do fly eggs live",
+        "expected_answer": "An adults fly eggs usually live for 15 to 25 days."
+      },
+      {
+        "query": "do dolphins have the smell sense",
+        "expected_answer": "Yes,They were thought to lack the ability."
+      },
+      {
+        "query": "what is the size and weight of a whitetail deer",
+        "expected_answer": "The size of a deer depends greatly on it's species, age, and sex. A typical adult female whitetail deer is usually around 100 lbs. and a male of the same species around 200 lbs."
+      }
+    ],
+    "false_confidence_rate": 0.34,
+    "false_confidence_examples": [
+      {
+        "query": "difference from phycol and psychiatrist",
+        "fabricated_answer": "1 Be aware of the difference between being a psychologist and a psychiatrist.."
+      },
+      {
+        "query": "erie insurance corporate address",
+        "fabricated_answer": "The purpose of this site is supply you with their phone number and address as well as share your thoughts about Erie Insurance."
+      },
+      {
+        "query": "what is tlr development",
+        "fabricated_answer": "TLR and Brain Development During TLR, the connections to the temporal lobe are starting to be developed, setting up the brain to be able to sequence."
+      },
+      {
+        "query": "what majors are clemson university known for",
+        "fabricated_answer": "Clemson University Majors Discover the majors and programs offered by Clemson University and the types of degrees awarded."
+      },
+      {
+        "query": "cite a movie mla",
+        "fabricated_answer": "To cite a movie quote in MLA style, the title of the film, the director's name, the studio and the release year are required."
+      }
+    ]
+  },
+  "latency": {
+    "check": "latency",
+    "num_evaluated": 100,
+    "embed": {
+      "avg_ms": 8.41,
+      "p50_ms": 7.38,
+      "p95_ms": 13.55,
+      "p99_ms": 15.53
+    },
+    "search": {
+      "avg_ms": 0.07,
+      "p50_ms": 0.07,
+      "p95_ms": 0.1,
+      "p99_ms": 0.11
+    },
+    "retrieval_total": {
+      "avg_ms": 8.57,
+      "p50_ms": 7.38,
+      "p95_ms": 13.67,
+      "p99_ms": 15.65
+    },
+    "generation": {
+      "avg_ms": 0.55,
+      "p50_ms": 0.54,
+      "p95_ms": 0.76,
+      "p99_ms": 0.78
+    },
+    "retrieval_latency_budget_ms": 50.0,
+    "retrieval_within_budget": true,
+    "generation_latency_target_ms": 200.0,
+    "generation_within_target": true
+  }
+}
