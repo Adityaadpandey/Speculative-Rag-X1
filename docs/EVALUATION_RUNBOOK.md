@@ -44,6 +44,11 @@ Alternatively, leave the submission untouched and pass `--rag-root /path/to/subm
 
 This repository already has the attached evaluator under `eval/`, plus `run.ps1` and `run.sh`.
 
+The report linked from the README was produced by `eval.runner`, not one of the older `scripts/run_*_eval.py` tables. Its generation path is selected by `--generation-mode`:
+
+- `local` (default): `app.generator` stops after the zero-LLM extractive path.
+- `recovery`: `app.generator` calls `answer_orchestrator.resolve_recovery` synchronously, using the existing `reflect.py` Claude Haiku functions. If the Anthropic account has no credits, pass `--recovery-provider openai` to use the same chain with the project's OpenAI adapter.
+
 ## 3. Create the evaluator environment
 
 The evaluator uses the submission's `.venv`:
@@ -140,6 +145,32 @@ TOKENIZERS_PARALLELISM=false ./run.sh \
 
 The report is printed to the console and saved as `results/<timestamp>.json`.
 
+### Full recovery comparison
+
+Run the exact same deterministic sample through the synchronous LLM recovery chain. Keep `--language hin`, `--split validation`, `--num-answerable 50`, `--num-unanswerable 50`, `--seed 42`, and `--top-k 5` unchanged:
+
+```bash
+TOKENIZERS_PARALLELISM=false ./run.sh \
+  --generation-mode recovery \
+  --recovery-provider openai \
+  --report-suffix _recovery \
+  --num-answerable 50 --num-unanswerable 50 \
+  --workers 1 --judge-workers 8
+```
+
+PowerShell:
+
+```powershell
+.\run.ps1 `
+  --generation-mode recovery `
+  --recovery-provider openai `
+  --report-suffix _recovery `
+  --num-answerable 50 --num-unanswerable 50 `
+  --workers 1 --judge-workers 8
+```
+
+This produces `results/<timestamp>_recovery.json` without overwriting the local hot-path report. Recovery latency is expected to exceed the 200 ms hot-path SLA because this comparison intentionally waits for Claude.
+
 ## What the checks mean
 
 - **Retrieval:** Recall@1/3/5 and MRR against MSMARCO-XI's selected passage labels.
@@ -160,3 +191,20 @@ Report: [`results/20260825T054515Z.json`](../results/20260825T054515Z.json)
 - Retrieval P95: **13.67 ms**
 - Generation P95: **0.76 ms**
 - Latency targets: **PASS**
+
+### Recovery comparison (same 100 queries)
+
+Report: [`results/20260826T111618Z_recovery.json`](../results/20260826T111618Z_recovery.json)
+
+Same `hin` validation sample, same seed, same 50/50 split, but with every answer routed through the synchronous recovery chain (`EVAL_RECOVERY_PROVIDER=openai`, since the Anthropic account was out of credits):
+
+| metric | local (extractive) | recovery (LLM chain) | delta |
+|---|---:|---:|---:|
+| correctness.correct_rate | 0.571 | 0.795 | **+22.4pp** |
+| reliability.false_confidence_rate | 0.340 | 0.660 | +32.0pp (worse) |
+| reliability.false_refusal_rate | 0.300 | 0.120 | **-18.0pp (better)** |
+| faithfulness.faithful_rate | 0.923 | 0.883 | -4.0pp |
+| latency.generation P95 | 0.76 ms | 23752.60 ms | off-SLA by design |
+| latency.generation P99 | 0.78 ms | 26384.85 ms | off-SLA by design |
+
+The recovery chain measurably improves correctness (+22pp) and reduces false refusals (-18pp), but at the cost of a sharply worse false-confidence rate (+32pp): the LLM chain confidently answers many unanswerable queries. Its latency is intentionally outside the 200 ms hot-path SLA (it waits for real Claude calls); the web app keeps this work in a background task.

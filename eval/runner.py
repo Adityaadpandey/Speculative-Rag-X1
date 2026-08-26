@@ -29,6 +29,7 @@ process imports and executes that project's real app/* and training/*
 modules in-process.
 """
 import argparse
+import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -63,7 +64,31 @@ def main():
     parser.add_argument("--language", default="hin", help="MSMARCO-XI language code (default: hin)")
     parser.add_argument("--split", default="validation", help="MSMARCO-XI split (default: validation)")
     parser.add_argument("--rag-root", default=None, help="path to the target RAG project (default: RAG_PROJECT_ROOT env var, then ../RAG)")
+    parser.add_argument(
+        "--generation-mode",
+        choices=("local", "recovery"),
+        default=None,
+        help="target generation mode; recovery runs resolve_recovery synchronously for comparison",
+    )
+    parser.add_argument(
+        "--report-suffix",
+        default="",
+        help="suffix appended before .json in the saved report filename (for example: _recovery)",
+    )
+    parser.add_argument(
+        "--recovery-provider",
+        choices=("anthropic", "openai"),
+        default=None,
+        help="provider for recovery mode; defaults to the target's Anthropic Claude callbacks",
+    )
     args = parser.parse_args()
+
+    if args.generation_mode is not None:
+        # Set this before verify_target imports the target modules. The target
+        # config and generator read it at import time.
+        os.environ["EVAL_GENERATION_MODE"] = args.generation_mode
+    if args.recovery_provider is not None:
+        os.environ["EVAL_RECOVERY_PROVIDER"] = args.recovery_provider
 
     # verify_target(), not load_target() -- actually imports the target's
     # embedder/generator modules and checks the required functions exist
@@ -140,7 +165,7 @@ def main():
     }
 
     report_mod.print_report(full_report)
-    out_path = report_mod.save_report(full_report, RESULTS_DIR)
+    out_path = report_mod.save_report(full_report, RESULTS_DIR, suffix=args.report_suffix)
     print(f"\nSaved -> {out_path}")
 
 

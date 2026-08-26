@@ -1,0 +1,219 @@
+{
+  "meta": {
+    "target_root": "/Users/aditya/Projects/Speculative-Rag",
+    "generation_backend": "recovery-chain",
+    "generation_model_hint": "openai-recovery-chain",
+    "language": "hin",
+    "split": "validation",
+    "num_answerable": 50,
+    "num_unanswerable": 50,
+    "num_examples": 100,
+    "num_chunks": 2391,
+    "top_k": 5,
+    "seed": 42,
+    "num_errored": 0
+  },
+  "retrieval": {
+    "check": "retrieval (reference-based)",
+    "num_evaluated": 50,
+    "top_k": 5,
+    "cross_lingual": {
+      "recall_at_k": {
+        "1": 0.56,
+        "3": 0.8,
+        "5": 0.9
+      },
+      "mrr": 0.693
+    },
+    "same_language": {
+      "recall_at_k": {
+        "1": 0.56,
+        "3": 0.8,
+        "5": 0.9
+      },
+      "mrr": 0.693
+    }
+  },
+  "faithfulness": {
+    "check": "faithfulness / hallucination (reference-free, LLM-as-judge)",
+    "num_evaluated": 77,
+    "faithful_rate": 0.8831,
+    "hallucination_rate": 0.1169,
+    "num_confident_answers": 77,
+    "self_report_precision": 0.8831,
+    "self_report_disagreements": [
+      {
+        "query": "calculate distance deceleration",
+        "answer": "For constant deceleration, use \\(v^2=u^2+2ad\\). With final velocity \\(v=0\\), initial velocity \\(u=12\\,\\text{m/s}\\), and deceleration magnitude \\(a=3.2\\,\\text{m/s}^2\\), the stopping distance is \\(d=u^2",
+        "judge_reason": "The context supports the equation and the given values, but it does not state the computed stopping distance of 22.5 m."
+      },
+      {
+        "query": "why did laozi say that idea",
+        "answer": "According to the passages, Laozi proposed Daoism because he thought Communism and Legalism were both somewhat flawed in their attempts to create a better society. He therefore tried to combine element",
+        "judge_reason": "The context supports Laozi as the creator of Daoism and mentions it as not too strict with some guidelines, but it does not support claims about Communism or combining those systems into Daoism."
+      },
+      {
+        "query": "what is elastomer processing?",
+        "answer": "Elastomer processing is the manufacture of elastomeric materials using methods suited to their behavior. For thermoplastic elastomers, this means heating them above their melt or softening temperature",
+        "judge_reason": "The context supports melt processing and remolding of TPEs, but it does not mention injection molding in this specific explanation of elastomer processing."
+      },
+      {
+        "query": "who owns the w hotel",
+        "answer": "The W Hotel & Residences in Fort Lauderdale is owned by Related Fund Management, an affiliate of Stephen Ross’s Related Cos.; it was sold to a company headed by Ross.",
+        "judge_reason": "The context says it was sold to a Ross-led company, but not that the hotel is owned by Related Fund Management."
+      },
+      {
+        "query": "how long before a collection agency reports to the credit bureau",
+        "answer": "There is no standard timeframe: a collection may appear on your credit report as soon as 30 days after being sold to the agency, or it may take up to six months. One passage also states that if the ag",
+        "judge_reason": "The answer adds a blanket 30-day reporting rule that conflicts with the context’s statement that there is no standard timeframe."
+      }
+    ],
+    "hallucinated_examples": [
+      {
+        "query": "calculate distance deceleration",
+        "answer": "For constant deceleration, use \\(v^2=u^2+2ad\\). With final velocity \\(v=0\\), initial velocity \\(u=12\\,\\text{m/s}\\), and deceleration magnitude \\(a=3.2\\,\\text{m/s}^2\\), the stopping distance is \\(d=u^2",
+        "judge_reason": "The context supports the equation and the given values, but it does not state the computed stopping distance of 22.5 m."
+      },
+      {
+        "query": "why did laozi say that idea",
+        "answer": "According to the passages, Laozi proposed Daoism because he thought Communism and Legalism were both somewhat flawed in their attempts to create a better society. He therefore tried to combine element",
+        "judge_reason": "The context supports Laozi as the creator of Daoism and mentions it as not too strict with some guidelines, but it does not support claims about Communism or combining those systems into Daoism."
+      },
+      {
+        "query": "what is elastomer processing?",
+        "answer": "Elastomer processing is the manufacture of elastomeric materials using methods suited to their behavior. For thermoplastic elastomers, this means heating them above their melt or softening temperature",
+        "judge_reason": "The context supports melt processing and remolding of TPEs, but it does not mention injection molding in this specific explanation of elastomer processing."
+      },
+      {
+        "query": "who owns the w hotel",
+        "answer": "The W Hotel & Residences in Fort Lauderdale is owned by Related Fund Management, an affiliate of Stephen Ross’s Related Cos.; it was sold to a company headed by Ross.",
+        "judge_reason": "The context says it was sold to a Ross-led company, but not that the hotel is owned by Related Fund Management."
+      },
+      {
+        "query": "how long before a collection agency reports to the credit bureau",
+        "answer": "There is no standard timeframe: a collection may appear on your credit report as soon as 30 days after being sold to the agency, or it may take up to six months. One passage also states that if the ag",
+        "judge_reason": "The answer adds a blanket 30-day reporting rule that conflicts with the context’s statement that there is no standard timeframe."
+      }
+    ]
+  },
+  "correctness": {
+    "check": "correctness (reference-based, LLM-as-judge)",
+    "num_evaluated": 44,
+    "correct_rate": 0.7955,
+    "incorrect_examples": [
+      {
+        "query": "what is the role as a writer in society",
+        "reference_answer": "The writer’s role in society is a vital and necessary check on the values and cultural norms that encrust groups and falsely empower minority interests in setting the world agenda.",
+        "answer": "The ‘writer’s’ role is vital to society in many ways.",
+        "judge_reason": "The answer is too generic and does not convey the specific role as a check on societal values and cultural norms."
+      },
+      {
+        "query": "how long for stitches to be removed",
+        "reference_answer": "From face stitches are removed in  5-7 days and from foot and ankle is removed in  approximately 14 days.",
+        "answer": "Care for your stitches and wound as follows: 1  Keep the area dry for the first 48 hours after stitches have been placed.",
+        "judge_reason": "The answer does not state how long stitches take to be removed."
+      },
+      {
+        "query": "how long do fly eggs live",
+        "reference_answer": "An adults fly eggs usually live for 15 to 25 days.",
+        "answer": "Fly eggs typically live for less than a day before hatching; in warm conditions, maggots can emerge after about 8 to 20 hours.",
+        "judge_reason": "The answer gives a different lifespan than the reference, which says fly eggs live 15 to 25 days."
+      },
+      {
+        "query": "gas dryers running cost",
+        "reference_answer": "Gas dryers cost anywhere from about $350 to $1,600.",
+        "answer": "most dryers consume about 5000 watts (5 kilowatts) of energy.",
+        "judge_reason": "The answer gives power usage, not the cost range for gas dryers."
+      },
+      {
+        "query": "what is chrome mean",
+        "reference_answer": "Chrome is a fast, simple, and secure web browser, built for the modern web.",
+        "answer": "“Chrome” can mean chromium when used in dyes or pigments. As a verb, it means to plate something with chromium or treat it with a chromium compound.",
+        "judge_reason": "The answer does not match the reference, which is about Google Chrome being a web browser."
+      }
+    ]
+  },
+  "reliability": {
+    "check": "reliability / \"lying factor\" (answerable-vs-answered 2x2)",
+    "num_answerable_evaluated": 50,
+    "num_unanswerable_evaluated": 50,
+    "false_refusal_rate": 0.12,
+    "false_refusal_examples": [
+      {
+        "query": "do dolphins have the smell sense",
+        "expected_answer": "Yes,They were thought to lack the ability."
+      },
+      {
+        "query": "what is the size and weight of a whitetail deer",
+        "expected_answer": "The size of a deer depends greatly on it's species, age, and sex. A typical adult female whitetail deer is usually around 100 lbs. and a male of the same species around 200 lbs."
+      },
+      {
+        "query": "how old would dean martin be",
+        "expected_answer": "Dean Martin was 78 years old."
+      },
+      {
+        "query": "can thinning vocal cords cause hoarseness",
+        "expected_answer": "Yes, thinning vocal cords cause hoarseness."
+      },
+      {
+        "query": "how long do you have to keep paperwork",
+        "expected_answer": "As with the policy paperwork, you will want to keep this insurance claim paperwork until at least three years after your policy has ended."
+      }
+    ],
+    "false_confidence_rate": 0.66,
+    "false_confidence_examples": [
+      {
+        "query": "difference from phycol and psychiatrist",
+        "fabricated_answer": "A psychiatrist attends medical school, earns a medical degree, and specializes in psychiatry. A psychologist does not have a medical degree and therefore cannot prescribe medication."
+      },
+      {
+        "query": "what is tlr development",
+        "fabricated_answer": "TLR and Brain Development During TLR, the connections to the temporal lobe are starting to be developed, setting up the brain to be able to sequence."
+      },
+      {
+        "query": "tail wagging the dog originate",
+        "fabricated_answer": "“The tail that wags the dog” dates to around the turn of the 20th century, with an appearance in Von Arnum’s *Fraulein Schmidt* in 1907. It was later used by F. Scott Fitzgerald in 1935."
+      },
+      {
+        "query": "calculate distance deceleration",
+        "fabricated_answer": "For constant deceleration, use \\(v^2=u^2+2ad\\). With final velocity \\(v=0\\), initial velocity \\(u=12\\,\\text{m/s}\\), and deceleration magnitude \\(a=3.2\\,\\text{m/s}^2\\), the stopping distance is \\(d=u^2"
+      },
+      {
+        "query": "how to cook fried chicken legs",
+        "fabricated_answer": "Heat oil in a deep fryer or large skillet to 350°F (175°C). Combine flour, cornmeal, and salt in a bag, add the drumsticks, and shake to coat; fry uncovered for 25–30 minutes, turning occasionally, un"
+      }
+    ]
+  },
+  "latency": {
+    "check": "latency",
+    "num_evaluated": 100,
+    "embed": {
+      "avg_ms": 35.43,
+      "p50_ms": 24.79,
+      "p95_ms": 64.91,
+      "p99_ms": 166.81
+    },
+    "search": {
+      "avg_ms": 0.13,
+      "p50_ms": 0.12,
+      "p95_ms": 0.16,
+      "p99_ms": 0.34
+    },
+    "retrieval_total": {
+      "avg_ms": 56.37,
+      "p50_ms": 51.59,
+      "p95_ms": 76.14,
+      "p99_ms": 179.51
+    },
+    "generation": {
+      "avg_ms": 11996.0,
+      "p50_ms": 13042.25,
+      "p95_ms": 23752.6,
+      "p99_ms": 26384.85
+    },
+    "retrieval_latency_budget_ms": 50.0,
+    "retrieval_within_budget": false,
+    "generation_latency_target_ms": 200.0,
+    "generation_within_target": false
+  }
+}

@@ -122,8 +122,11 @@ def print_report(report: dict):
     print("\n" + "=" * 70)
 
 
-def save_report(report: dict, results_dir: Path) -> Path:
+def save_report(report: dict, results_dir: Path, suffix: str = "") -> Path:
+    """Save a report, optionally preserving a comparison-mode suffix."""
     results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
+    if suffix and not suffix.startswith("_"):
+        suffix = f"_{suffix}"
+    out_path = results_dir / f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}{suffix}.json"
     out_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     return out_path

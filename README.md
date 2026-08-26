@@ -121,9 +121,11 @@ Each script in `scripts/run_*_eval.py` reproduces one table in `results/`:
 
 ### Independent evaluation runbook
 
-The repeatable wiring instructions for attaching `rag-local-eval-loop` to this or another Task #2 submission are in [`docs/EVALUATION_RUNBOOK.md`](docs/EVALUATION_RUNBOOK.md). The latest 50-answerable/50-unanswerable report is [`results/20260825T054515Z.json`](results/20260825T054515Z.json).
+The repeatable wiring instructions for attaching `rag-local-eval-loop` to this or another Task #2 submission are in [`docs/EVALUATION_RUNBOOK.md`](docs/EVALUATION_RUNBOOK.md). The latest 50-answerable/50-unanswerable report is [`results/20260825T054515Z.json`](results/20260825T054515Z.json). To compare the async recovery chain, run the same sample with `--generation-mode recovery --report-suffix _recovery`; this routes each answer through `resolve_recovery` and saves a diffable recovery report without overwriting the baseline.
 
 Latest measured values: Recall@5 **90%**, faithful rate **92.31%**, correctness **57.14%**, false confidence **34%**, retrieval P95 **13.67 ms**, and generation P95 **0.76 ms**. The declared latency targets pass.
+
+Measured recovery comparison on the identical 100-query sample ([`results/20260826T111618Z_recovery.json`](results/20260826T111618Z_recovery.json)): correctness improves **57.1% → 79.5%** and false refusal drops **30% → 12%**, while false confidence rises to 66% and generation latency is intentionally off-SLA (LLM-backed, background task in production).
 
 ## Testing
 
