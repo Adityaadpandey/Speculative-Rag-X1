@@ -9,7 +9,7 @@ import { createAudioRecorder } from "./audioRecorder.js";
 import { collapseHero } from "./heroChoreography.js";
 
 // Every LLM call in the recovery chain (validate / rerank+regenerate / synthesize) runs on
-// Claude Haiku -- the fast path never touches an LLM. Unchanged from the pre-redesign app.js.
+// the model the backend reports as llm_model -- the fast path never touches an LLM.
 const STATUS_META = {
   answered: { label: "Verified Answer", cls: "good" },
   not_answered: { label: "No Direct Answer Found", cls: "warn" },
@@ -21,7 +21,8 @@ const STATUS_META = {
 
 const state = {
   sarvamKeyConfigured: false,
-  anthropicKeyConfigured: false,
+  openaiKeyConfigured: false,
+  llmModel: "LLM",
   collapsed: false,
   activeControls: "hero",
   currentRecoveryPhase: null,
@@ -103,7 +104,9 @@ function strategyFor(language) {
 async function loadCollections() {
   const data = await fetchCollections();
   state.sarvamKeyConfigured = data.sarvam_key_configured;
-  state.anthropicKeyConfigured = data.anthropic_key_configured;
+  state.openaiKeyConfigured = data.openai_key_configured;
+  state.llmModel = data.llm_model || "LLM";
+  for (const tag of document.querySelectorAll('[data-role="llm-model"]')) tag.textContent = state.llmModel;
 
   const languages = [...new Set(data.collections.map((c) => c.language))];
   strategiesByLanguage = {};
@@ -263,14 +266,14 @@ function renderFastPath(data) {
     setStepState(timelineHandle, "verify", {
       state: "active",
       hidden: false,
-      detail: "Claude Haiku is checking the answer is grounded, complete, and on-target…",
+      detail: `${state.llmModel} is checking the answer is grounded, complete, and on-target…`,
     });
   } else {
     setStepState(timelineHandle, "verify", { hidden: true });
     setStepState(timelineHandle, "rerank", {
       state: "active",
       hidden: false,
-      detail: "Claude Haiku is searching every retrieved passage for the evidence…",
+      detail: `${state.llmModel} is searching every retrieved passage for the evidence…`,
     });
   }
 }
@@ -281,7 +284,7 @@ function renderStageProgress(stage) {
     setStepState(timelineHandle, "rerank", {
       state: "active",
       hidden: false,
-      detail: "Claude Haiku is re-ranking retrieved passages and regenerating an answer…",
+      detail: `${state.llmModel} is re-ranking retrieved passages and regenerating an answer…`,
     });
     if (!timelineHandle.steps.verify.el.hidden) {
       setStepState(timelineHandle, "verify", { state: "corrected", detail: "flagged for a closer look — escalating to re-ranking" });
@@ -291,14 +294,14 @@ function renderStageProgress(stage) {
     setStepState(timelineHandle, "rerank", {
       state: "active",
       hidden: false,
-      detail: "Claude is drafting a grounded answer from the selected evidence…",
+      detail: `${state.llmModel} is drafting a grounded answer from the selected evidence…`,
     });
   } else if (stage === "synthesizing") {
     state.currentRecoveryPhase = "synthesis";
     setStepState(timelineHandle, "synthesis", {
       state: "active",
       hidden: false,
-      detail: "Claude Haiku is synthesizing an answer across multiple passages…",
+      detail: `${state.llmModel} is synthesizing an answer across multiple passages…`,
     });
     setStepState(timelineHandle, "rerank", { state: "corrected", detail: "regenerated answer needed more support — escalating to synthesis" });
   } else if (stage === "verifying" && state.currentRecoveryPhase) {

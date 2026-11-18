@@ -32,6 +32,7 @@ def test_get_collections_returns_parsed_list_and_key_flags(monkeypatch):
     ]
     assert data["sarvam_key_configured"] is True
     assert data["openai_key_configured"] is False
+    assert data["llm_model"]  # the UI labels recovery steps with this
 
 
 def test_parse_collection_name_recognizes_known_language_strategy_pairs():

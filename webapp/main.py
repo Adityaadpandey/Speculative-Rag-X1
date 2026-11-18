@@ -27,6 +27,7 @@ from speculative_rag.config import BCP47_LANGUAGE_CODES, LANGUAGE_SOURCES, SETTI
 from speculative_rag.pipeline import run_pipeline
 from speculative_rag.pipeline_schemas import RagOutcome
 from speculative_rag.openai_reflect import (
+    MODEL as LLM_MODEL,
     check_groundedness,
     rerank_passages,
     stream_generate_answer,
@@ -105,6 +106,9 @@ async def get_collections() -> dict:
         "collections": _COLLECTIONS,
         "sarvam_key_configured": bool(os.environ.get("SARVAM_API_KEY")),
         "openai_key_configured": bool(os.environ.get("OPENAI_API_KEY")),
+        # Lets the UI name the model that actually runs recovery instead of
+        # a hard-coded label that drifts whenever the provider changes.
+        "llm_model": LLM_MODEL,
     }
 
 
