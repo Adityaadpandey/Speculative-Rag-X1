@@ -53,6 +53,7 @@ from speculative_rag.reflect import (
     rerank_passages_llm,
     synthesize_answer_llm,
 )
+from speculative_rag.speculative import Draft
 
 
 class AnswerOutcome(BaseModel):
@@ -65,7 +66,10 @@ class AnswerOutcome(BaseModel):
     # the UI never has to infer this from which timeline steps ran (fragile:
     # rerank can run but the answer still come from synthesis, or rerank can
     # run and fail while the original extractive answer was already valid).
-    answer_engine: Literal["extractive", "claude_regenerated", "claude_synthesized"] | None = None
+    answer_engine: Literal["extractive", "claude_regenerated", "claude_synthesized", "speculative_draft"] | None = None
+    # Every draft the speculative stage wrote, best first, with its scores.
+    # Empty unless the speculative drafter ran.
+    drafts: list[Draft] = []
 
     # Instrumentation -- trace the actual data flow instead of just logging what the UI shows.
     initial_answer_valid: bool
@@ -122,6 +126,7 @@ def resolve_answer(
     dense_rerank=None,
     stream_answer=None,
     on_answer_delta=None,
+    speculative=None,
 ) -> AnswerOutcome:
     """Synchronous convenience wrapper: runs the fast path (run_pipeline)
     and the recovery chain (resolve_recovery) back to back. Used by CLI/eval
@@ -155,6 +160,7 @@ def resolve_answer(
         dense_rerank=dense_rerank,
         stream_answer=stream_answer,
         on_answer_delta=on_answer_delta,
+        speculative=speculative,
     )
 
 
@@ -174,6 +180,7 @@ def resolve_recovery(
     stream_answer=None,
     on_answer_delta=None,
     on_stage=None,
+    speculative=None,
 ) -> AnswerOutcome:
     """The LLM validation/rerank+regenerate/synthesis chain, taking an
     already-computed PipelineResult (the fast path's output) rather than
@@ -205,6 +212,7 @@ def resolve_recovery(
     on_stage = on_stage or (lambda stage: None)
 
     start = time.perf_counter()
+    speculative_drafts: list[Draft] = []
 
     def elapsed_ms() -> float:
         return (time.perf_counter() - start) * 1000.0
@@ -224,7 +232,7 @@ def resolve_recovery(
         synthesis_triggered: bool = False,
         answer_text: str | None = None,
         source_passage_ids: list[str] | None = None,
-        answer_engine: Literal["extractive", "claude_regenerated", "claude_synthesized"] | None = None,
+        answer_engine: Literal["extractive", "claude_regenerated", "claude_synthesized", "speculative_draft"] | None = None,
     ) -> AnswerOutcome:
         return AnswerOutcome(
             final_status=final_status,
@@ -243,6 +251,7 @@ def resolve_recovery(
             synthesis_triggered=synthesis_triggered,
             total_end_to_end_latency_ms=elapsed_ms(),
             pipeline_result=pipeline_result,
+            drafts=list(speculative_drafts),
         )
 
     if pipeline_result.outcome == RagOutcome.UNSAFE_INPUT_REFUSED:
@@ -326,10 +335,30 @@ def resolve_recovery(
     # token and is still validated in full before becoming final.
     rerank_candidates = [RerankCandidate(source_id=c.chunk.chunk_id, text=c.chunk.text) for c in prefilter_candidates]
     by_chunk_id = {c.chunk.chunk_id: c for c in candidates}
-    on_stage("reranking")
+    if speculative is None:
+        on_stage("reranking")
     rerank_start = time.perf_counter()
 
-    if stream_answer is None:
+    if speculative is not None:
+        # Speculative RAG (speculative.py): several cheap drafts over diverse
+        # evidence subsets, scored by a verifier. The winning draft is shaped
+        # like a rerank+generate verdict so every check below -- groundedness,
+        # synthesis fallback, extractive fallback -- applies to it unchanged.
+        result = speculative(query_text, prefilter_candidates, on_stage)
+        speculative_drafts.extend(result.drafts)
+        best = result.best
+        selected_source_ids = best.source_ids if best else []
+        rerank_latency_ms = (time.perf_counter() - rerank_start) * 1000.0
+        evidence_chunks = [by_chunk_id[sid] for sid in selected_source_ids if sid in by_chunk_id]
+        evidence_texts = [c.chunk.text for c in evidence_chunks]
+        rerank_verdict = RerankAndAnswer(
+            selected_sources=[SelectedSource(source_id=sid, relevance_score=best.score) for sid in selected_source_ids],
+            selection_found=best is not None,
+            answerable=best is not None,
+            answer_text=best.answer if best else "",
+            reasoning=result.reasoning,
+        )
+    elif stream_answer is None:
         rerank_verdict = rerank_and_generate(query_text, rerank_candidates)
         selected_source_ids = [s.source_id for s in rerank_verdict.selected_sources]
         rerank_latency_ms = (time.perf_counter() - rerank_start) * 1000.0
@@ -400,7 +429,7 @@ def resolve_recovery(
                 regenerated_answerable=regenerated_answerable,
                 answer_text=regenerated_answer,
                 source_passage_ids=[c.chunk.source_passage_id for c in evidence_chunks],
-                answer_engine="claude_regenerated",
+                answer_engine="speculative_draft" if speculative is not None else "claude_regenerated",
             )
 
     # Regeneration from the reranked evidence still didn't pass validation
