@@ -1,8 +1,8 @@
 # Speculative RAG — Voice-Enabled Indic RAG
 
-A retrieval-augmented QA system over [`ai4bharat/MSMARCO-XI`](https://huggingface.co/datasets/ai4bharat/MSMARCO-XI) (MS MARCO machine-translated into 14 Indic languages), scoped to Hindi, English, Tamil, and Urdu. Voice query → Sarvam STT → BM25 sparse retrieval (Qdrant) → extractive answer, all inside a **<200ms hot-path SLA**, with an async LLM recovery chain (groundedness check → rerank+regenerate → multi-passage synthesis) layered on top whenever the fast answer doesn't hold up, reported separately and never counted against the SLA.
+A retrieval-augmented QA system over [`ai4bharat/MSMARCO-XI`](https://huggingface.co/datasets/ai4bharat/MSMARCO-XI) (MS MARCO machine-translated into 14 Indic languages), scoped to Hindi, English, Tamil, and Urdu. Voice query → Sarvam STT → BM25 sparse retrieval (Qdrant) → extractive answer, all inside a **<200ms hot-path SLA**, with an async LLM recovery chain (groundedness check → Speculative RAG drafting and verification → multi-passage synthesis) layered on top whenever the fast answer doesn't hold up, reported separately and never counted against the SLA.
 
-> **Naming note:** despite the name, this is not an implementation of the [Speculative RAG paper](https://arxiv.org/abs/2407.08223) (a smaller specialist LM drafts several candidate answers in parallel from different document subsets, a larger generalist LM verifies and picks one). There's no specialist/generalist LM pair and no parallel drafting here. The "speculative" part is closer to speculative *decoding*: the hot path always commits to a cheap, zero-LLM guess first (extractive span selection) and shows it immediately, and a slower LLM check — outside the SLA — runs after the fact and can overrule it.
+> **How the name fits:** there are two speculative layers. The hot path commits to a cheap, zero-LLM extractive guess first and shows it immediately, much like speculative *decoding*. When a slower LLM check overrules that guess, recovery runs the [Speculative RAG paper](https://arxiv.org/abs/2407.08223)'s draft-then-verify loop (`speculative.py`). The retrieved passages are embedded and clustered, a small drafter model writes several answers in parallel from diverse evidence subsets, and a larger verifier model scores each draft. One gap versus the paper: its self-consistency score needs prompt logprobs, which the chat API doesn't return, so drafts are ranked by draft confidence × verifier support only.
 
 ## How it works
 
@@ -22,9 +22,9 @@ flowchart TD
     HP --> R3["INSUFFICIENT_EVIDENCE"]
     HP --> CAND["Candidate answer"]
 
-    CAND -.->|"async, Claude Haiku — never blocks the SLA"| V{"Valid?<br/><sub>grounded + answers query</sub>"}
+    CAND -.->|"async LLM — never blocks the SLA"| V{"Valid?<br/><sub>grounded + answers query</sub>"}
     V -->|yes| OK["ANSWERED"]
-    V -->|no| RR["Rerank + regenerate<br/><sub>across the full candidate pool</sub>"]
+    V -->|no| RR["Speculative RAG<br/><sub>cluster → parallel drafts (small LM) → verifier scores (large LM)</sub>"]
     RR --> V2{"Valid?"}
     V2 -->|yes| OK
     V2 -->|no| SY["Multi-passage<br/>synthesis"]
@@ -35,8 +35,8 @@ flowchart TD
 
 - **Retrieval** is BM25 sparse term-frequency search (`sparse_embedding.py`), not a dense neural embedder in-process — deliberate, so the deployed webapp fits a free-tier 512MB host.
 - **The hot path never calls a hosted LLM.** Answer generation is extractive (rank/select a passage or span across the top retrieved candidates), which is what makes the <200ms target hittable under real network conditions.
-- **Async recovery** (`answer_orchestrator.py`) is the single control-flow owner for what happens when the fast answer fails validation: rerank+regenerate (one LLM call that both re-selects evidence across the whole candidate pool and answers from it) → re-validate → multi-passage synthesis as a final fallback. Every stage is folded into one `FinalAnswerStatus` (`answer_status.py`: `answered` / `not_answered` / `insufficient_evidence` / `ungrounded` / `fallback`) instead of leaving the caller to reconcile several independent verdicts.
-- **The web UI renders this recovery chain as a live timeline** — the fast answer appears immediately, then "verifying → re-ranking & regenerating → synthesizing" steps fill in as the background recovery call progresses, each tagged with which engine (local heuristic vs. Claude Haiku) produced it.
+- **Async recovery** (`answer_orchestrator.py`) is the single control-flow owner for what happens when the fast answer fails validation: Speculative RAG drafting (`speculative.py`: embed and cluster the candidate pool, draft answers in parallel from one-passage-per-cluster subsets with a small model, score each draft with a larger verifier) → re-validate the winning draft → multi-passage synthesis as a final fallback. Every stage is folded into one `FinalAnswerStatus` (`answer_status.py`: `answered` / `not_answered` / `insufficient_evidence` / `ungrounded` / `fallback`) instead of leaving the caller to reconcile several independent verdicts.
+- **The web UI renders this recovery chain as a live timeline** — the fast answer appears immediately, then "verifying → drafting in parallel & verifying → synthesizing" steps fill in as the background recovery call progresses, each tagged with the model that produced it, and the drafting step lists every surviving draft with its score.
 
 ## Project layout
 
@@ -53,13 +53,14 @@ flowchart TD
 | Module | Purpose |
 |---|---|
 | `pipeline.py` | The hot-path orchestrator — typed stages, per-stage timing, typed refusal exits, no model calls |
-| `answer_orchestrator.py` | Owns the async recovery chain (validate → rerank+regenerate → synthesize) that runs after the hot path returns |
+| `answer_orchestrator.py` | Owns the async recovery chain (validate → speculative drafting → synthesize) that runs after the hot path returns |
 | `answer_status.py` | `FinalAnswerStatus` + `combine_verdict` — reconciles the hot-path outcome with the async LLM verdict into the one status shown to a user |
 | `generation.py` | Extractive answer selection — best-matching sentence span across the top candidates, no model call |
 | `chunking.py` | Passage-splitting strategies (native/sliding-window/sentence/metadata) used at ingestion |
 | `guardrails.py` | Unsafe-input and off-topic heuristic checks |
 | `answer_type.py` | Cheap expected-answer-type detection (numeric/yesno/person, en/hi/ta) used to disambiguate extractive candidates |
-| `reflect.py` | Async LLM calls — groundedness check, rerank+regenerate, multi-passage synthesis (Claude Haiku) |
+| `speculative.py` | Speculative RAG: embeddings, clustering, parallel drafting (`OPENAI_DRAFTER_MODEL`, default gpt-5.4-nano) and verifier scoring (`OPENAI_VERIFIER_MODEL`, default gpt-4.1) |
+| `openai_reflect.py`, `reflect.py` | Async LLM calls: groundedness check, rerank+regenerate, multi-passage synthesis. The webapp uses the OpenAI version; `reflect.py` is the Anthropic original |
 | `retrieval.py`, `sparse_embedding.py`, `embedding.py` | Qdrant retrieval, BM25 sparse embedding, optional dense embedding (eval-only) |
 | `stt.py` | Sarvam speech-to-text |
 | `indexing.py`, `data.py` | Corpus loading and Qdrant collection ingestion |
@@ -77,7 +78,7 @@ Create a `.env` in the repo root (loaded automatically by `config.py`):
 
 ```
 SARVAM_API_KEY=       # speech-to-text
-ANTHROPIC_API_KEY=    # async validate/rerank/synthesis (Claude Haiku)
+OPENAI_API_KEY=       # async validate, speculative drafting/verification, synthesis, embeddings
 QDRANT_URL=           # unset -> falls back to local on-disk Qdrant at results/qdrant_local
 QDRANT_API_KEY=
 ```
@@ -140,13 +141,13 @@ Tests marked `slow` (in `pyproject.toml`) download models or hit local services 
 **Why this shape**
 
 - Latency is bounded and predictable — the hot path touches no third-party API, so its tail latency is governed by local BM25 scoring plus one Qdrant round trip, not by an LLM provider's own tail latency.
-- It degrades gracefully — if the Anthropic API is slow, rate-limited, or down, the fast extractive answer still returns; only the "is this actually right" confirmation is missing, not the answer itself.
+- It degrades gracefully — if the LLM API is slow, rate-limited, or down, the fast extractive answer still returns; only the "is this actually right" confirmation is missing, not the answer itself.
 - It's cheap to run at rest — no dense embedding model in-process (`sparse_embedding.py`, BM25 only) keeps the deployed instance inside a free-tier 512MB host with zero GPU.
 - The branching logic is deterministic and unit-testable — `generation.py`'s extractive selection is pure Python with no model call, so `pipeline.py`/`answer_orchestrator.py` are tested with fakes instead of mocked LLM responses.
 
 **What it costs**
 
-- It doesn't save LLM spend, only latency. `webapp/main.py`'s `post_answer` always schedules the recovery chain in the background, and `answer_orchestrator.resolve_recovery` always runs a groundedness check on every request that reaches `ANSWERED` — so LLM cost still scales linearly with query volume. Only the deeper rerank+regenerate/synthesis calls are conditional on that cheap check failing.
+- It doesn't save LLM spend, only latency. `webapp/main.py`'s `post_answer` always schedules the recovery chain in the background, and `answer_orchestrator.resolve_recovery` always runs a groundedness check on every request that reaches `ANSWERED` — so LLM cost still scales linearly with query volume. Only the deeper speculative drafting/synthesis calls are conditional on that cheap check failing.
 - The fast path has a hard quality ceiling. Extractive selection can only return a verbatim span already present in one retrieved passage — it can't synthesize across passages or rephrase — so the first answer a user sees is sometimes wrong on multi-hop or not-verbatim-in-any-single-passage queries, until (if) recovery resolves it.
 - The displayed answer can flip after the fact. The web UI shows the fast answer immediately, then updates `final_status` — and sometimes the answer text itself — once the async chain resolves; something that looked `ANSWERED` for a second can become `UNGROUNDED` or get replaced by a synthesized answer. That's a real UX cost paid for lower perceived latency.
 - Retrieval quality is bounded by BM25 lexical overlap. There's no semantic matching, so paraphrased or vocabulary-mismatched queries recall worse than a dense/hybrid retriever would — `run_embedding_model_eval.py` exists specifically to measure that gap.
@@ -154,7 +155,7 @@ Tests marked `slow` (in `pyproject.toml`) download models or hit local services 
 **What scaling past a single free-tier instance would need**
 
 - `_PENDING_ANSWERS` (`webapp/main.py`) is an in-memory `OrderedDict` on one process, and the two-phase `/api/answer` → poll `/api/answer/{request_id}` flow only works because there's exactly one replica. More than one uvicorn worker or Render instance needs that moved to a shared store (Redis, a DB row) any replica can read.
-- The recovery chain runs via `asyncio.to_thread` + FastAPI `BackgroundTasks` inside the same process — fine at low QPS, but it has no retry, no backpressure against Anthropic's rate limits, and drops in-flight work if the process restarts. A loaded deployment would want a real task queue (Celery/RQ or similar) instead.
+- The recovery chain runs via `asyncio.to_thread` + FastAPI `BackgroundTasks` inside the same process — fine at low QPS, but it has no retry, no backpressure against the LLM provider's rate limits, and drops in-flight work if the process restarts. A loaded deployment would want a real task queue (Celery/RQ or similar) instead.
 - `SparseEmbedder`/`Retriever` are loaded once per language at startup as module globals (`_load_state`) — every replica pays that load cost independently, and the local file-based Qdrant client (the no-`QDRANT_URL` branch of `get_qdrant_client`) doesn't support concurrent multi-process access at all, so production already requires Qdrant Cloud, region-pinned to the webapp (see Deployment below) to keep the retrieve round trip cheap.
 - Nothing is cached today. Identical or near-identical queries re-run BM25 retrieval and re-pay the LLM groundedness check every time. Caching groundedness verdicts, or skipping the check above some retrieval-score/answer-type confidence threshold, is the most direct lever for cutting both latency and LLM cost at real volume — neither is implemented yet.
 - Growing past hi/en/ta/ur means adding a `LanguageSource` in `config.py` and validating that BM25's per-language tokenizer/stemmer setup (`sparse_embedding.py`) actually produces reasonable stems for the new language — stemming quality varies a lot across Indic languages and there's no generic fallback if it doesn't.
