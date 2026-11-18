@@ -15,6 +15,8 @@ body {
 }
 
 ::selection { background: var(--hh-yellow); color: var(--hh-forest-deep); }
+/* Solid lime-tinted cream: translucent cream read as gray on the green. */
+::placeholder { color: #d9e2a6; opacity: 1; }
 
 /* ---- Ambient background: flat, no ornament ---- */
 #gradient-mesh {
@@ -22,10 +24,7 @@ body {
   inset: 0;
   z-index: -1;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 12% 8%, rgba(183, 216, 61, 0.16), transparent 25rem),
-    radial-gradient(circle at 88% 78%, rgba(243, 21, 134, 0.12), transparent 28rem),
-    linear-gradient(135deg, var(--bg) 0%, var(--bg-deep) 100%);
+  background: linear-gradient(135deg, var(--bg) 0%, var(--bg-deep) 100%);
 }
 #gradient-mesh::after {
   content: "";
@@ -76,11 +75,11 @@ button.ask-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  box-shadow: 0 8px 0 rgba(3, 59, 36, 0.35);
+  box-shadow: 0 6px 16px rgba(1, 25, 15, 0.3);
   transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
-button.ask-btn:hover { background: var(--hh-yellow-soft); transform: translateY(-2px); box-shadow: 0 10px 0 rgba(3, 59, 36, 0.35); }
-button.ask-btn:active { transform: translateY(2px); box-shadow: 0 3px 0 rgba(3, 59, 36, 0.35); }
+button.ask-btn:hover { background: var(--hh-yellow-soft); transform: translateY(-2px); box-shadow: 0 10px 22px rgba(1, 25, 15, 0.34); }
+button.ask-btn:active { transform: translateY(1px); box-shadow: 0 2px 6px rgba(1, 25, 15, 0.3); }
 button.ask-btn:disabled { cursor: not-allowed; opacity: 0.55; }
 .ask-btn-spinner {
   width: 0.9rem;
@@ -120,19 +119,10 @@ button.secondary:hover { background: rgba(244, 229, 0, 0.1); }
   width: 100%;
   text-align: center;
 }
-.hero-mark {
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.3em;
-  font-size: 0.75rem;
-  color: var(--hh-lime);
-  margin: 0 0 1rem;
-}
 .hero-title {
   font-family: var(--font-display);
   font-size: clamp(2.6rem, 7vw, 4.4rem);
   font-weight: 700;
-  font-style: italic;
   letter-spacing: -0.01em;
   color: var(--hh-yellow);
   text-shadow: 0 10px 30px rgba(1, 25, 15, 0.24);
@@ -161,8 +151,7 @@ button.secondary:hover { background: rgba(244, 229, 0, 0.1); }
   max-width: 26rem;
   margin: 0 auto;
   padding: 0.4rem 0.9rem 0.4rem 0.4rem;
-  border-color: var(--fg-muted-soft);
-  opacity: 0.85;
+  border-color: var(--line);
 }
 .hero-query-row--secondary input[type="text"] { padding: 0.55rem 0.7rem; font-size: 0.9rem; }
 .hero-query-row--secondary .ask-btn { padding: 0.5rem 1rem; font-size: 0.85rem; }
@@ -295,14 +284,14 @@ button.secondary:hover { background: rgba(244, 229, 0, 0.1); }
   max-width: 60rem;
   border-top: none;
 }
-.compact-logo { font-family: var(--font-display); font-style: italic; font-weight: 700; font-size: 1.1rem; color: var(--hh-yellow); white-space: nowrap; }
+.compact-logo { font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; color: var(--hh-yellow); white-space: nowrap; }
 #compact-bar select { padding: 0.45rem 0.55rem; font-size: 0.85rem; }
 
 /* Text path stays secondary here too -- the mic is still the primary
    control, so the input/ask-button get the same muted treatment as the
    hero's fallback text row instead of competing with it. */
-#compact-bar input[type="text"] { flex: 1; padding: 0.5rem 0.7rem; font-size: 0.85rem; border: 1.5px solid var(--fg-muted-soft); opacity: 0.8; }
-#compact-bar .ask-btn { padding: 0.45rem 0.85rem; font-size: 0.78rem; border-color: var(--fg-muted-soft); background: transparent; color: var(--fg-muted); }
+#compact-bar input[type="text"] { flex: 1; padding: 0.5rem 0.7rem; font-size: 0.85rem; border: 1.5px solid var(--line); }
+#compact-bar .ask-btn { padding: 0.45rem 0.85rem; font-size: 0.78rem; border-color: var(--line); background: transparent; color: var(--fg-muted); }
 #compact-bar .ask-btn:hover { background: rgba(245, 238, 213, 0.08); }
 #compact-bar .ask-btn-spinner { border-color: rgba(245, 238, 213, 0.3); border-top-color: var(--fg-muted); }
 
@@ -317,7 +306,7 @@ button.secondary:hover { background: rgba(244, 229, 0, 0.1); }
   align-items: start;
 }
 .result-main-column { min-width: 0; }
-.answer-card { padding: 1.65rem 1.75rem; margin-bottom: 1rem; border-left: 4px solid var(--hh-yellow); }
+.answer-card { padding: 1.65rem 1.75rem; margin-bottom: 1rem; border-color: rgba(244, 229, 0, 0.55); }
 
 /* ---- Retrieval trace ---- */
 .retrieval-panel {
@@ -328,19 +317,18 @@ button.secondary:hover { background: rgba(244, 229, 0, 0.1); }
   overflow: auto;
 }
 .retrieval-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
-.retrieval-panel h2 { margin: 0.1rem 0 0; font-family: var(--font-display); font-size: 1.35rem; line-height: 1.1; }
-.eyebrow { margin: 0; color: var(--hh-lime); font-family: var(--font-mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.12em; }
+.retrieval-panel h2 { margin: 0; font-family: var(--font-display); font-size: 1.35rem; line-height: 1.1; }
 .retrieval-count { color: var(--fg-muted); font-family: var(--font-mono); font-size: 0.72rem; white-space: nowrap; padding-top: 0.2rem; }
 .retrieval-intro { color: var(--fg-muted); font-size: 0.78rem; line-height: 1.4; margin: 0.75rem 0 1rem; }
 .retrieval-list { display: flex; flex-direction: column; gap: 0.65rem; }
 .retrieval-item { padding: 0.75rem; border: 1px solid var(--panel-border); border-radius: var(--radius-md); background: rgba(0, 0, 0, 0.08); transition: border-color 0.2s ease, background 0.2s ease; }
 .retrieval-item:hover { border-color: var(--hh-yellow); background: rgba(244, 229, 0, 0.06); }
-.retrieval-item--selected { border-color: var(--good); box-shadow: inset 3px 0 0 var(--good); }
+.retrieval-item--selected { border-color: var(--good); background: var(--good-bg); }
 .retrieval-item-header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.45rem; }
 .retrieval-rank { color: var(--hh-yellow); font-family: var(--font-mono); font-size: 0.76rem; font-weight: 700; }
-.retrieval-score { color: var(--fg-muted-soft); font-family: var(--font-mono); font-size: 0.68rem; }
+.retrieval-score { color: var(--fg-muted-soft); font-family: var(--font-mono); font-size: 0.75rem; }
 .retrieval-text { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; color: var(--fg); font-size: 0.78rem; line-height: 1.45; margin: 0; }
-.retrieval-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-muted-soft); font-family: var(--font-mono); font-size: 0.64rem; margin: 0.6rem 0 0; }
+.retrieval-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-muted-soft); font-family: var(--font-mono); font-size: 0.72rem; margin: 0.6rem 0 0; }
 .retrieval-empty { color: var(--fg-muted); font-size: 0.82rem; }
 
 .badge {

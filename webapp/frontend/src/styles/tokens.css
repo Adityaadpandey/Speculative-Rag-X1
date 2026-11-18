@@ -1,10 +1,12 @@
-@import url("https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,600;0,700;0,800;1,600&family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@400;600;700;800&family=Mukta:wght@400;500;600;700&family=Mukta+Malar:wght@400;600;700&family=Noto+Naskh+Arabic:wght@400;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap");
 
 :root {
   color-scheme: dark;
 
   --font-display: "Bodoni Moda", "Times New Roman", serif;
-  --font-body: "Inter", system-ui, sans-serif;
+  /* Mukta carries Latin + Devanagari, Mukta Malar adds Tamil, Noto Naskh
+     covers Urdu -- the corpus languages all render in one family voice. */
+  --font-body: "Mukta", "Mukta Malar", "Noto Naskh Arabic", system-ui, sans-serif;
   --font-mono: "Barlow Condensed", system-ui, sans-serif;
 
   /* HH Goa 2026 palette */
@@ -20,8 +22,10 @@
   --bg: #075b35;
   --bg-deep: #033b24;
   --fg: var(--hh-cream);
-  --fg-muted: rgba(245, 238, 213, 0.72);
-  --fg-muted-soft: rgba(245, 238, 213, 0.48);
+  --fg-muted: rgba(245, 238, 213, 0.82);
+  --fg-muted-soft: rgba(245, 238, 213, 0.76);
+  /* Hairlines keep the old soft value; text no longer borrows it. */
+  --line: rgba(245, 238, 213, 0.48);
 
   --panel-bg: rgba(3, 59, 36, 0.82);
   --panel-border: rgba(245, 238, 213, 0.24);
