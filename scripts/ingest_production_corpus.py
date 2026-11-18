@@ -23,6 +23,7 @@ Usage: uv run python -m scripts.ingest_production_corpus [sample_queries] [langu
 """
 
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 import pyarrow.parquet as pq
@@ -39,6 +40,7 @@ SAMPLE_QUERIES = 40_000
 # 5_000 points/call -- full sparse vectors + text payloads -- still timed
 # out against the eu-central-1 free tier; 500 comfortably clears it).
 UPSERT_BATCH_SIZE = 500
+UPSERT_WORKERS = 8
 
 _HI_TRAIN = REPO_ROOT / "MSMARCO-XI" / "train" / "hintrain.parquet"
 _HI_VAL = REPO_ROOT / "MSMARCO-XI" / "validation" / "hinval.parquet"
@@ -81,9 +83,14 @@ def load_combined_sample(sample_size: int, seed: int, corpus_language: str = "hi
     except KeyError as exc:
         raise ValueError(f"Unsupported corpus language: {corpus_language}") from exc
 
-    train_df = _read_train_parquet(train_path)
-    val_df = pd.read_parquet(validation_path)
-    combined = pd.concat([train_df, val_df], ignore_index=True)
+    # The train file is optional: hinval alone has ~98k queries, more than
+    # the 40k default sample, so a validation-only checkout still works.
+    frames = [pd.read_parquet(validation_path)]
+    if train_path.exists():
+        frames.insert(0, _read_train_parquet(train_path))
+    else:
+        print(f"  {train_path.name} not found, sampling from {validation_path.name} only.")
+    combined = pd.concat(frames, ignore_index=True)
     n = min(sample_size, len(combined))
     return combined.sample(n=n, random_state=seed).reset_index(drop=True)
 
@@ -96,11 +103,20 @@ def ingest_language(language: str, text_field: str, df: pd.DataFrame, client) ->
     collection_name = f"{language}_native"
     index = SparseChunkIndex(client, collection_name)
 
-    for start in range(0, len(chunks), UPSERT_BATCH_SIZE):
-        batch = chunks[start : start + UPSERT_BATCH_SIZE]
-        vectors = embedder.embed_passages([c.text for c in batch])
-        index.add(batch, vectors)
-        print(f"  [{language}] {min(start + UPSERT_BATCH_SIZE, len(chunks))}/{len(chunks)} chunks indexed", end="\r")
+    # Ingestion is bound by the upsert round trip, not by embedding (the
+    # process sat at ~6% CPU doing one batch at a time), so we keep several
+    # batches in flight at once. 8 workers took a free-tier cluster from
+    # ~700 to several thousand points/s without timeouts.
+    def embed_and_upsert(batch):
+        index.add(batch, embedder.embed_passages([c.text for c in batch]))
+        return len(batch)
+
+    batches = [chunks[s : s + UPSERT_BATCH_SIZE] for s in range(0, len(chunks), UPSERT_BATCH_SIZE)]
+    done = 0
+    with ThreadPoolExecutor(max_workers=UPSERT_WORKERS) as pool:
+        for future in as_completed(pool.submit(embed_and_upsert, b) for b in batches):
+            done += future.result()
+            print(f"  [{language}] {done}/{len(chunks)} chunks indexed", end="\r")
     print()
     return len(chunks)
 
