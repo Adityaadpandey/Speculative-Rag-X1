@@ -28,6 +28,7 @@ from speculative_rag.reflect import (
     _RerankParsed,
     _SYNTHESIS_PROMPT_TEMPLATE,
     _GENERATE_ANSWER_PROMPT_TEMPLATE,
+    strip_answerable_marker,
 )
 
 MODEL = os.environ.get("OPENAI_GENERATION_MODEL", "gpt-5.6-luna")
@@ -169,4 +170,4 @@ def stream_generate_answer(query_text: str, evidence_texts: list[str], on_delta)
         if delta:
             parts.append(delta)
             on_delta(delta)
-    return "".join(parts).strip()
+    return strip_answerable_marker("".join(parts))

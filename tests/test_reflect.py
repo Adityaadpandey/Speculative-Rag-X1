@@ -541,3 +541,14 @@ def test_synthesize_answer_llm_real_call_recovers_multi_passage_answer():
         pytest.skip(f"Anthropic API not configured: {exc}")
     assert verdict.answerable is True
     assert "1998" in verdict.answer_text and "2004" in verdict.answer_text
+
+
+def test_strip_answerable_marker_drops_true_flag_and_blanks_refusals():
+    from speculative_rag.reflect import strip_answerable_marker
+
+    assert strip_answerable_marker("India is in South Asia.\n\nanswerable: true") == "India is in South Asia."
+    assert strip_answerable_marker("India is in South Asia.\n**Answerable:** True.") == "India is in South Asia."
+    # "false" means the model declined, so there's no answer to verify.
+    assert strip_answerable_marker("The evidence doesn't say.\n\nanswerable: false") == ""
+    # No marker at all: leave the prose alone, even if it mentions the word.
+    assert strip_answerable_marker("  Mumbai is answerable to Maharashtra.  ") == "Mumbai is answerable to Maharashtra."

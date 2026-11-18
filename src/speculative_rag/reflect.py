@@ -4,6 +4,8 @@ RagOutcome. It's a secondary, informational verdict on whether an
 already-returned ANSWERED result is actually grounded in its source
 passage, using Claude Haiku structured output."""
 
+import re
+
 import anthropic
 from pydantic import BaseModel
 
@@ -244,6 +246,27 @@ def generate_answer_llm(query_text: str, evidence_texts: list[str]) -> Generated
     return parsed
 
 
+# The generation prompt above says "set answerable to false", which makes
+# sense for the structured call but not for the streamed one: there's no
+# field to set, so the model writes the flag into the prose instead, e.g.
+#   "India is located in South Asia.\n\nanswerable: true"
+#   "The evidence does not say where India is.\n**Answerable:** false"
+_ANSWERABLE_MARKER = re.compile(r"(?:^|\n)[^\w\n]*answerable\W*:\W*(true|false)\W*$", re.IGNORECASE)
+
+
+def strip_answerable_marker(text: str) -> str:
+    """Drop a trailing "answerable: true/false" line from streamed prose.
+    A "false" marker means the model is declining, so we return "" and the
+    orchestrator treats that as no answer and escalates to synthesis
+    instead of verifying the refusal sentence as if it were an answer."""
+    match = _ANSWERABLE_MARKER.search(text)
+    if match is None:
+        return text.strip()
+    if match.group(1).lower() == "false":
+        return ""
+    return text[: match.start()].strip()
+
+
 def stream_generate_answer_llm(
     query_text: str,
     evidence_texts: list[str],
@@ -270,7 +293,7 @@ def stream_generate_answer_llm(
         for text in stream.text_stream:
             parts.append(text)
             on_delta(text)
-    return "".join(parts).strip()
+    return strip_answerable_marker("".join(parts))
 
 
 # Latency optimization for answer_orchestrator.resolve_recovery:
