@@ -23,6 +23,7 @@ Usage: uv run python -m scripts.ingest_production_corpus [sample_queries] [langu
 """
 
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
@@ -41,6 +42,7 @@ SAMPLE_QUERIES = 40_000
 # out against the eu-central-1 free tier; 500 comfortably clears it).
 UPSERT_BATCH_SIZE = 500
 UPSERT_WORKERS = 8
+UPSERT_RETRIES = 4
 
 _HI_TRAIN = REPO_ROOT / "MSMARCO-XI" / "train" / "hintrain.parquet"
 _HI_VAL = REPO_ROOT / "MSMARCO-XI" / "validation" / "hinval.parquet"
@@ -108,8 +110,18 @@ def ingest_language(language: str, text_field: str, df: pd.DataFrame, client) ->
     # batches in flight at once. 8 workers took a free-tier cluster from
     # ~700 to several thousand points/s without timeouts.
     def embed_and_upsert(batch):
-        index.add(batch, embedder.embed_passages([c.text for c in batch]))
-        return len(batch)
+        vectors = embedder.embed_passages([c.text for c in batch])
+        # One SSL handshake timeout used to kill a whole multi-minute ingest.
+        # Point ids are uuid5(chunk_id), so re-sending a batch is harmless.
+        for attempt in range(UPSERT_RETRIES):
+            try:
+                index.add(batch, vectors)
+                return len(batch)
+            except Exception as exc:
+                if attempt == UPSERT_RETRIES - 1:
+                    raise
+                print(f"\n  [{language}] upsert failed ({exc!r:.80}), retrying...")
+                time.sleep(2**attempt)
 
     batches = [chunks[s : s + UPSERT_BATCH_SIZE] for s in range(0, len(chunks), UPSERT_BATCH_SIZE)]
     done = 0
