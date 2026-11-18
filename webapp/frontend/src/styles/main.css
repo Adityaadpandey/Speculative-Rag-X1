@@ -408,6 +408,16 @@ button.secondary:hover { background: rgba(244, 229, 0, 0.1); }
 .step-detail { font-size: 0.86rem; color: var(--fg-muted); margin-top: 0.15rem; }
 .step-time { font-family: var(--font-mono); font-size: 0.85rem; letter-spacing: 0.02em; color: var(--fg-muted-soft); white-space: nowrap; padding-top: 0.1rem; }
 
+/* Urdu answers: letter-spacing breaks Arabic-script joining, and Bodoni has
+   no Arabic glyphs, so right-to-left text drops both. */
+.answer-text:dir(rtl) { letter-spacing: 0; font-family: var(--font-body); }
+
+/* Speculative drafts under the drafting step: score column, then the answer. */
+.draft-list { list-style: none; margin: 0.6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.draft-item { display: flex; gap: 0.6rem; align-items: baseline; padding: 0.4rem 0.6rem; border: 1px solid var(--panel-border); border-radius: var(--radius-md); font-size: 0.86rem; color: var(--fg-muted); }
+.draft-item--best { border-color: var(--good); background: var(--good-bg); color: var(--fg); }
+.draft-score { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 700; color: var(--hh-yellow); min-width: 2.4rem; }
+.draft-answer { min-width: 0; overflow-wrap: anywhere; }
 .engine-tag { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.12rem 0.4rem; border-radius: var(--radius-md); }
 .engine-claude { background: var(--claude-tag-bg); color: var(--claude-tag-fg); }
 .engine-local { background: var(--local-tag-bg); color: var(--local-tag-fg); }

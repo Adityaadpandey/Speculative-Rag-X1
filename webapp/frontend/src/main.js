@@ -8,8 +8,9 @@ import { renderAnswerDiff } from "./answerDiff.js";
 import { createAudioRecorder } from "./audioRecorder.js";
 import { collapseHero } from "./heroChoreography.js";
 
-// Every LLM call in the recovery chain (validate / rerank+regenerate / synthesize) runs on
-// the model the backend reports as llm_model -- the fast path never touches an LLM.
+// The recovery chain's validate/synthesize calls run on llm_model; the speculative
+// drafting step runs a small drafter_model and scores drafts with verifier_model.
+// The fast path never touches an LLM.
 const STATUS_META = {
   answered: { label: "Verified Answer", cls: "good" },
   not_answered: { label: "No Direct Answer Found", cls: "warn" },
@@ -23,6 +24,8 @@ const state = {
   sarvamKeyConfigured: false,
   openaiKeyConfigured: false,
   llmModel: "LLM",
+  drafterModel: "drafter",
+  verifierModel: "verifier",
   collapsed: false,
   activeControls: "hero",
   currentRecoveryPhase: null,
@@ -107,6 +110,11 @@ async function loadCollections() {
   state.openaiKeyConfigured = data.openai_key_configured;
   state.llmModel = data.llm_model || "LLM";
   for (const tag of document.querySelectorAll('[data-role="llm-model"]')) tag.textContent = state.llmModel;
+  state.drafterModel = data.drafter_model || state.drafterModel;
+  state.verifierModel = data.verifier_model || state.verifierModel;
+  for (const tag of document.querySelectorAll('[data-role="spec-models"]')) {
+    tag.textContent = `${state.drafterModel} → ${state.verifierModel}`;
+  }
 
   const languages = [...new Set(data.collections.map((c) => c.language))];
   strategiesByLanguage = {};
@@ -144,6 +152,7 @@ function resetResultView() {
     setStepState(timelineHandle, name, { state: "pending", detail: "", time: "" });
   }
   setStepState(timelineHandle, "rerank", { hidden: true });
+  renderDrafts([]);
   setStepState(timelineHandle, "synthesis", { hidden: true });
   setStepState(timelineHandle, "verify", { hidden: false });
 }
@@ -225,6 +234,7 @@ function renderRetrievedCandidates(candidates = [], selectedSourceIds = []) {
 
     const text = document.createElement("p");
     text.className = "retrieval-text";
+    text.dir = "auto";
     text.textContent = candidate.text;
 
     const meta = document.createElement("p");
@@ -273,28 +283,25 @@ function renderFastPath(data) {
     setStepState(timelineHandle, "rerank", {
       state: "active",
       hidden: false,
-      detail: `${state.llmModel} is searching every retrieved passage for the evidence…`,
+      detail: "grouping the retrieved passages by topic before drafting…",
     });
   }
 }
 
 function renderStageProgress(stage) {
-  if (stage === "reranking") {
+  if (stage === "drafting") {
     state.currentRecoveryPhase = "rerank";
     setStepState(timelineHandle, "rerank", {
       state: "active",
       hidden: false,
-      detail: `${state.llmModel} is re-ranking retrieved passages and regenerating an answer…`,
+      detail: `${state.drafterModel} is writing several drafts at once, each from a different mix of evidence…`,
     });
     if (!timelineHandle.steps.verify.el.hidden) {
-      setStepState(timelineHandle, "verify", { state: "corrected", detail: "flagged for a closer look — escalating to re-ranking" });
+      setStepState(timelineHandle, "verify", { state: "corrected", detail: "flagged for a closer look — escalating to speculative drafting" });
     }
-  } else if (stage === "generating") {
-    state.currentRecoveryPhase = "rerank";
+  } else if (stage === "verifying_drafts") {
     setStepState(timelineHandle, "rerank", {
-      state: "active",
-      hidden: false,
-      detail: `${state.llmModel} is drafting a grounded answer from the selected evidence…`,
+      detail: `${state.verifierModel} is scoring each draft against its own rationale…`,
     });
   } else if (stage === "synthesizing") {
     state.currentRecoveryPhase = "synthesis";
@@ -303,10 +310,33 @@ function renderStageProgress(stage) {
       hidden: false,
       detail: `${state.llmModel} is synthesizing an answer across multiple passages…`,
     });
-    setStepState(timelineHandle, "rerank", { state: "corrected", detail: "regenerated answer needed more support — escalating to synthesis" });
+    setStepState(timelineHandle, "rerank", { state: "corrected", detail: "no draft held up — escalating to synthesis across every passage" });
   } else if (stage === "verifying" && state.currentRecoveryPhase) {
     setStepState(timelineHandle, state.currentRecoveryPhase, { detail: "double-checking the new answer is grounded before returning it…" });
   }
+}
+
+// One line per draft, best first: score, then the answer it proposed. The
+// score is draft confidence x verifier support, shown so a reader can see
+// why the winner won, e.g. "0.87  Islamabad is the capital of Pakistan."
+function renderDrafts(drafts) {
+  const list = timelineHandle.steps.rerank.el.querySelector('[data-role="draft-list"]');
+  list.innerHTML = "";
+  list.hidden = drafts.length === 0;
+  drafts.forEach((draft, i) => {
+    const item = document.createElement("li");
+    item.className = `draft-item${i === 0 ? " draft-item--best" : ""}`;
+    const score = document.createElement("span");
+    score.className = "draft-score";
+    score.textContent = draft.score.toFixed(2);
+    score.title = `draft confidence ${draft.draft_confidence.toFixed(2)} × verifier support ${draft.support.toFixed(2)}`;
+    const answer = document.createElement("span");
+    answer.className = "draft-answer";
+    answer.dir = "auto";
+    answer.textContent = draft.answer;
+    item.append(score, answer);
+    list.appendChild(item);
+  });
 }
 
 function renderInstrumentation(instrumentation, finalStatus) {
@@ -319,33 +349,35 @@ function renderInstrumentation(instrumentation, finalStatus) {
     } else {
       setStepState(timelineHandle, "verify", {
         state: "corrected",
-        detail: "the fast answer needed a closer look, so the pipeline automatically escalated to re-ranking.",
+        detail: "the fast answer needed a closer look, so the pipeline escalated to speculative drafting.",
       });
     }
   }
 
   if (instrumentation.rerank_triggered) {
     const rerankTime = instrumentation.rerank_latency_ms != null ? `${instrumentation.rerank_latency_ms.toFixed(0)} ms` : "";
-    const sourceCount = instrumentation.selected_source_ids.length;
-    if (!instrumentation.reranked_answer_generated || sourceCount === 0) {
+    const drafts = instrumentation.drafts ?? [];
+    const best = drafts[0];
+    renderDrafts(drafts);
+    if (!best) {
       setStepState(timelineHandle, "rerank", {
         state: "corrected",
         hidden: false,
-        detail: "none of the retrieved passages contained the answer — declined rather than guess.",
+        detail: "every draft said its evidence didn't answer the question — declined rather than guess.",
         time: rerankTime,
       });
     } else if (instrumentation.regenerated_answer_valid) {
       setStepState(timelineHandle, "rerank", {
         state: "done",
         hidden: false,
-        detail: `selected ${sourceCount} source${sourceCount === 1 ? "" : "s"} from the full candidate pool and regenerated a verified answer.`,
+        detail: `${drafts.length} draft${drafts.length === 1 ? "" : "s"} survived; the verifier picked the best (score ${best.score.toFixed(2)}) and it passed the grounding check.`,
         time: rerankTime,
       });
     } else {
       setStepState(timelineHandle, "rerank", {
         state: "corrected",
         hidden: false,
-        detail: `selected ${sourceCount} source${sourceCount === 1 ? "" : "s"}, but the regenerated answer needed further verification.`,
+        detail: `the top draft (score ${best.score.toFixed(2)}) didn't pass the final grounding check.`,
         time: rerankTime,
       });
     }

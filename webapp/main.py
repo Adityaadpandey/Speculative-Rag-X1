@@ -35,6 +35,7 @@ from speculative_rag.openai_reflect import (
 )
 from speculative_rag.reflect import RerankCandidate
 from speculative_rag.retrieval import Retriever
+from speculative_rag.speculative import DRAFTER_MODEL, VERIFIER_MODEL, run_speculative_rag
 from speculative_rag.sparse_embedding import SparseEmbedder
 from speculative_rag.stt import SarvamAPIKeyMissingError, transcribe_audio
 
@@ -109,6 +110,8 @@ async def get_collections() -> dict:
         # Lets the UI name the model that actually runs recovery instead of
         # a hard-coded label that drifts whenever the provider changes.
         "llm_model": LLM_MODEL,
+        "drafter_model": DRAFTER_MODEL,
+        "verifier_model": VERIFIER_MODEL,
     }
 
 
@@ -212,6 +215,9 @@ def _serialize_outcome(outcome) -> dict:
             "regenerated_answer_valid": outcome.regenerated_answer_valid,
             "regenerated_answerable": outcome.regenerated_answerable,
             "synthesis_triggered": outcome.synthesis_triggered,
+            # Every speculative draft, best first, so the UI can show what
+            # the drafter proposed and how the verifier scored each one.
+            "drafts": [draft.model_dump() for draft in outcome.drafts],
             # Only the recovery phase's own latency -- the fast path is
             # already reported separately in "pipeline" and is what's
             # actually measured against the ~200ms latency budget. This
@@ -297,6 +303,7 @@ async def _run_recovery(request_id: str, query_text: str, pipeline_result) -> No
             prefilter_lexical_top_n=SETTINGS.rerank_prefilter_lexical_top_n,
             prefilter_retrieval_reserve=SETTINGS.rerank_prefilter_retrieval_reserve,
             dense_rerank_enabled=SETTINGS.dense_rerank_enabled,
+            speculative=run_speculative_rag,
         )
         _PENDING_ANSWERS[request_id] = _serialize_outcome(outcome)
     except Exception as exc:

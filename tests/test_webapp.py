@@ -453,6 +453,7 @@ def test_post_answer_returns_fast_provisional_shape_then_polling_returns_final_a
     def fake_resolve_recovery(query_text, pipeline_result, **kwargs):
         captured["query_text"] = query_text
         captured["pipeline_result"] = pipeline_result
+        captured["speculative"] = kwargs.get("speculative")
         return _fake_outcome()
 
     monkeypatch.setattr(webapp_main, "resolve_recovery", fake_resolve_recovery)
@@ -486,6 +487,8 @@ def test_post_answer_returns_fast_provisional_shape_then_polling_returns_final_a
     assert result["instrumentation"]["synthesis_triggered"] is False
     assert result["instrumentation"]["selected_source_ids"] == ["p_ww2:native:0"]
     assert result["instrumentation"]["recovery_latency_ms"] == 1523.9
+    assert result["instrumentation"]["drafts"] == []
+    assert captured["speculative"] is webapp_main.run_speculative_rag
     assert result["pipeline"]["outcome"] == "answered"
     assert [t["stage"] for t in result["pipeline"]["timings"]] == ["embed", "retrieve"]
 

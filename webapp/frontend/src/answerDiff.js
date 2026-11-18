@@ -1,8 +1,14 @@
 import { diffWords } from "diff";
 import { gsap } from "gsap";
 
+// diffWords only counts Latin letters as word characters, so Hindi vowel
+// signs and Urdu letters each became their own inline-block span, which
+// broke letter joining ("اسلام" rendered as "اسل ام"). Those scripts get a
+// plain swap instead of the word-by-word animation.
+const NEEDS_SHAPING = /[\u0900-\u0DFF\u0600-\u06FF\u0750-\u077F\uFB50-\uFEFF]/;
+
 export function renderAnswerDiff(containerEl, oldText, newText) {
-  if (oldText == null || oldText === newText) {
+  if (oldText == null || oldText === newText || NEEDS_SHAPING.test(oldText + newText)) {
     containerEl.textContent = newText;
     return;
   }
@@ -29,7 +35,9 @@ export function renderAnswerDiff(containerEl, oldText, newText) {
 
   gsap.set(addedSpans, { opacity: 0, x: -6 });
 
-  const tl = gsap.timeline();
+  // Once the animation settles, swap the spans back for plain text so the
+  // final answer is one normally shaped, selectable run of text.
+  const tl = gsap.timeline({ onComplete: () => { containerEl.textContent = newText; } });
   if (removedSpans.length > 0) {
     tl.to(removedSpans, {
       opacity: 0,
