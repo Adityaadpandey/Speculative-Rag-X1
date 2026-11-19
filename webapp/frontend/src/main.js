@@ -456,6 +456,13 @@ function setAsking(isAsking) {
   }
 }
 
+function detectScriptLanguage(text) {
+  if (/[ऀ-ॿ]/.test(text)) return "hi";
+  if (/[஀-௿]/.test(text)) return "ta";
+  if (/[؀-ۿ]/.test(text)) return "ur";
+  return null; // Latin or unknown: keep whatever the dropdown says
+}
+
 async function runQuery(queryText) {
   if (!queryText.trim()) {
     // transcribeAndQuery() may have already set the spinner active before
@@ -468,6 +475,13 @@ async function runQuery(queryText) {
   resetResultView();
 
   const controls = activeControlSet();
+  // The dropdown defaults to English, and BM25 over the English index finds
+  // nothing for a Hindi question. So pick the language from the script the
+  // user actually typed: "ताजमहल कहाँ है" -> hi, Arabic script -> ur, Tamil -> ta.
+  const scriptLanguage = detectScriptLanguage(queryText);
+  if (scriptLanguage && [...controls.languageSelect.options].some((o) => o.value === scriptLanguage)) {
+    controls.languageSelect.value = scriptLanguage;
+  }
   let data;
   try {
     data = await postAnswer({ queryText, language: controls.languageSelect.value, strategy: strategyFor(controls.languageSelect.value) });
